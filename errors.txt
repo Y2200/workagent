@@ -1,0 +1,294 @@
+# Work Agent 错误记录
+
+> 开发过程中所有遇到的问题必须记录。
+> 每遇到编译错误、数据库错误、依赖问题、架构问题、测试失败、环境问题，必须追加。
+
+====================
+时间：2026-08-11
+模块：core/container + rag
+问题：RAG 半重构断线，应用无法启动
+现象：`RAGService("knowledge")` 传参 TypeError；`nodes.py` 调用不存在的 `category` 参数；`import_knowledge.py` 引用不存在的 `.knowledge` 属性
+原因分析：Milvus 迁移落地时容器组装/调用点未同步更新
+解决过程：逐个核对 service.py/nodes.py/container.py/import_knowledge.py 签名与调用
+最终方案：container 改 `RAGService()`；nodes 去掉 `category=` kwarg；rag/service 增补 `import_knowledge()` 方法复用 KnowledgeManager
+是否增加测试：否（回归已覆盖）
+====================
+
+====================
+时间：2026-08-11
+模块：rag/milvus_store
+问题：delete 后立即查询 count 未减
+现象：`delete_by_ids` 返回 delete_count=1，但 `count_by_document` 仍为 1
+原因分析：Milvus 默认 Bounded 一致性，删除后查询不保证立即可见
+解决过程：对比 insert/count/search 调用参数，定位一致性级别
+最终方案：新方法显式传 `consistency_level="Strong"`
+是否增加测试：是（test_milvus.py 覆盖 delete 后 count==0）
+====================
+
+====================
+时间：2026-08-11
+模块：Windows 控制台
+问题：GBK 编码崩溃
+现象：agent 节点 `print()` 遇到非 GBK 字符（Ա、✅）抛 `UnicodeEncodeError`
+原因分析：Windows 管道/控制台默认 GBK，Python print 无法编码部分 unicode
+解决过程：排查 uvicorn 日志 traceback 定位到 print 语句
+最终方案：`config.py` 全局重配置 stdout/stderr 为 UTF-8 + errors=replace
+是否增加测试：否（环境修复，脚本可正常输出即验证）
+====================
+
+====================
+时间：2026-08-11
+模块：scripts 轮询
+问题：_wait_ready 读到旧状态
+现象：管线已置 ready，轮询仍显示 processing/timeout
+原因分析：SQLAlchemy 同一 Session 内 `db.get()` 走身份映射缓存，不重新查库
+解决过程：比对同一 session 与不同 session 读取差异
+最终方案：轮询循环内 `db.expire_all()` 强制刷新
+是否增加测试：是（test_permission/test_audit 依赖该修复）
+====================
+
+====================
+时间：2026-08-11
+模块：frontend 测试
+问题：curl 发送中文 multipart 文件名乱码
+现象：`filename` 上传后成 GBK 乱码，但表单字段正常
+原因分析：Windows curl 用本地代码页发送文件名，FastAPI 按 UTF-8 解析
+解决过程：对比 category/departments 正常而 filename 乱码
+最终方案：真实浏览器为 UTF-8 不受影响；测试改用 httpx/TestClient 传 bytes
+是否增加测试：否
+====================
+
+====================
+时间：2026-08-11
+模块：frontend npm
+问题：npm install 超慢 / 会话 cwd 被改动
+现象：npm install 无输出多分钟；后续 bash 命令在 frontend/ 下找不到 `.venv/Scripts/python.exe`
+原因分析：npm 大包(element-plus)在慢网络下解压久；`cd frontend && npm run build` 改变会话 cwd 并持久化
+解决过程：等待 npm 完成；用绝对路径/显式 cd 回项目根
+最终方案：后台命令统一 `cd /d/project/work_agent`；涉及 frontend 命令用绝对路径
+是否增加测试：否
+====================
+
+====================
+时间：2026-08-11
+模块：scripts/test_tenant_admin
+问题：中文 bytes 字面量 SyntaxError
+现象：`b"企业A专属制度内容"` 编译报 "bytes can only contain ASCII literal characters"
+原因分析：Python 源码中 bytes 字面量只能含 ASCII
+解决过程：定位两个文件上传处
+最终方案：改为 `"企业A专属制度内容".encode("utf-8")`
+是否增加测试：是（test_tenant_admin.py）
+====================
+
+====================
+时间：2026-08-11
+模块：scripts/test_audit
+问题：NameError: AgentLog 未定义
+现象：场景4 `db.query(AgentLog)` 崩溃，测试中断；管道 `tail` 掩盖了真实退出码
+原因分析：测试引用了 AgentLog 但未 import
+解决过程：用 `python -u` 无缓冲运行定位真实异常
+最终方案：补 `from work_agent.db.models import AgentLog`
+是否增加测试：是（test_audit.py 场景4）
+====================
+
+====================
+时间：2026-08-11
+模块：scripts/test_audit 清理
+问题：清理测试文档触发 TenantAccessDenied
+现象：`document_service.delete(doc_a_id)` 未传 tenant_id，而文档在租户1/2，抛越权异常，测试文档残留
+原因分析：delete 默认 tenant_id=""，与文档 tenant_id 不匹配（安全校验生效）
+解决过程：核对 delete 签名与越权校验逻辑
+最终方案：测试清理按文档实际 tenant_id 传参
+是否增加测试：是（test_audit.py 清理步骤）
+====================
+
+====================
+时间：2026-08-11
+模块：shell 环境
+问题：后端重启 exit 127
+现象：`.venv/Scripts/python.exe` 找不到，报 "No such file or directory"
+原因分析：会话 cwd 停在 frontend/，相对路径失效
+解决过程：`pwd` 确认 cwd，检查相对路径
+最终方案：统一 `cd /d/project/work_agent` 后用绝对路径
+是否增加测试：否
+====================
+
+====================
+时间：2026-08-11
+模块：api/admin + schemas
+问题：response_model 过滤响应字段
+现象：PUT /permissions 返回缺少 synced_chunks，测试 KeyError
+原因分析：FastAPI response_model=PermissionOut 只保留声明的字段，额外键被过滤
+解决过程：测试断言触发 KeyError，定位到 response_model
+最终方案：PermissionOut 增加可选字段 synced_chunks
+是否增加测试：是（test_permission_management.py）
+====================
+
+====================
+时间：2026-08-11
+模块：scripts 测试残留
+问题：前次失败运行残留文档污染基线
+现象：test_permission_management 基线断言失败（研发员工未过滤）
+原因分析：上一次运行在 PUT 加研发部后崩溃，残留文档带"研发部"权限，被下次运行基线检索到
+解决过程：排查 Milvus 候选文档 access 元数据，发现多个残留文档
+最终方案：测试开头清理租户1/2残留文档
+是否增加测试：是（test_permission_management.py 开头清理）
+====================
+
+====================
+时间：2026-08-11
+模块：api/admin RBAC 重构
+问题：正则批量替换依赖失败
+现象：部分端点 current_user 变成空的 Depends()，FastAPI 无法识别
+原因分析：正则 `[^)]*?` 在多括号签名处提前匹配到第一个 )，未替换成功
+解决过程：grep 定位 Depends() 空依赖，逐函数修复
+最终方案：逐个端点补 require_permission(...)
+是否增加测试：是（test_rbac.py）
+====================
+
+====================
+时间：2026-08-11
+阶段：Enterprise Architecture Review
+文件：services/rbac_service.py
+问题：RBACService 直接执行 DB 查询（3 表 join），绕过 Repository 层
+原因：权限解析查询直接写在 Service，违反 API→Service→Repository→DB 分层
+解决方案：新增 repositories/rbac_repository.py，RBACService 改为仅依赖 Repository
+验证方式：test_rbac.py 通过
+====================
+
+====================
+时间：2026-08-11
+阶段：Enterprise Architecture Review
+文件：api/admin.py
+问题：归档端点未记录操作日志
+原因：POST /audit/archive 遗漏 operation_logs 记录
+解决方案：补齐 audit.archive 操作审计
+验证方式：test_security_regression.py 场景3 + 操作审计回归
+====================
+
+====================
+时间：2026-08-11
+阶段：Enterprise Architecture Review
+文件：config.py
+问题：config.py 存在弱口令默认值（admin_password=admin123 / minio minioadmin）
+原因：开发期为了便利设置的默认值，生产环境是安全隐患
+解决方案：默认值改为空串，强制通过 .env 提供；新增 .env.example 模板
+验证方式：配置从 .env 正确读取（import 后校验 bool(settings.admin_password)）
+====================
+
+====================
+时间：2026-08-11
+阶段：Enterprise Architecture Review
+文件：db/models/*.py + migrate_indexes.py
+问题：多表缺 tenant_id/created_at/组合索引
+原因：新增表时未同步设计高频查询索引
+解决方案：模型补 __table_args__ 组合索引 + migrate_indexes.py 迁移脚本
+验证方式：psql 查询 pg_indexes 确认 7 个索引存在
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 4-1
+文件：agent/router/（新包 vs 旧 router.py）
+问题：新建 agent/router/ 包遮蔽原有 agent/router.py 模块
+原因分析：Python 包目录优先级高于同目录 .py 模块，`from work_agent.agent.router import router_node` 导入失败，workflow 回归测试 ImportError
+解决方案：旧 router.py 移入包内 legacy.py，__init__.py 重新导出 router_node 保持向后兼容
+验证：test_tenant_admin / test_audit 回归通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 4-4
+文件：prompts/intent_router.txt
+问题："查看知识库文档列表" 被误分类为 knowledge_query 而非 document_operation
+原因分析：intent_router prompt 的 document_operation 示例只含上传/删除/改权限，缺"查看列表/有哪些文档"类示例
+解决方案：prompt 增加"查看知识库文档列表" "有哪些文档" "查看文档5" 示例
+验证方式：test_tool_calling.py 场景2（document_operation → document_tool.list 返回文档列表）
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 4-7
+文件：agent/tools/document_tool.py
+问题：重构 _dispatch 后 context 未传递，NameError
+原因分析：提取 _dispatch 方法时漏传 context 参数，内部引用 context.tenant_id 失败
+解决方案：_dispatch 签名增加 context 参数，调用处传递
+验证方式：test_agent_intelligence.py 场景3（文档操作）通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 4-7
+文件：scripts/test_agent_intelligence.py
+问题：跨租户断言过严误判
+现象：A用户检索B文档返回"未检索到...企业B专属机密..."，断言 response 不含"企业B专属机密"失败
+原因分析：LLM 在"未找到"回复中回显查询词，非内容泄漏；断言应检查文档内容而非查询词
+解决方案：改为断言 B 文档独特内容"仅企业B可见"不在回复
+验证方式：test_agent_intelligence.py 场景5 通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-2
+文件：scripts/test_multi_agent.py + test_tool_calling.py
+问题：LLM 意图分类不确定性导致测试偶发失败
+现象："查看知识库文档列表" 时而被分类为 knowledge_query 而非 document_operation，断言失败
+原因分析：意图路由依赖 LLM，同一消息分类存在波动
+解决方案：场景改为确定性直接调用 OperationAgent/document_tool（构造 PlanResult），不依赖 LLM 分类
+验证方式：test_multi_agent / test_tool_calling 连续多次通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-2
+文件：scripts/test_permission_management.py
+问题：Milvus 孤儿向量污染测试基线
+现象：中断运行的回归留下无 DB 记录的 Milvus 向量（带历史权限 user_ids），导致基线断言失败
+原因分析：文档删除若中途中断，DB 记录已删但向量残留；测试清理只删 DB 不查 Milvus
+解决方案：新增 scripts/test_utils.py cleanup_tenant_data()（DB + Milvus 孤儿向量双清理），各测试复用
+验证方式：test_permission_management 恢复通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-2
+文件：scripts/test_tool_calling.py
+问题：函数内本地 import RBACService 遮蔽模块级导入
+现象：UnboundLocalError，前面的 RBACService 用法报未关联值
+原因分析：Python 函数内任何对名字的赋值（含 import）使该名字在整函数作用域视为局部
+解决方案：删除函数内重复的 RBACService 本地 import（顶部已有）
+验证方式：test_tool_calling 通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-3
+文件：agent/tools/audit_tool.py
+问题：audit_tool 返回 ORM 对象导致 json.dumps 失败
+现象：AgentLog not JSON serializable，operation_agent 格式化审计结果时崩溃
+原因分析：audit_service.list_logs 返回 ORM 对象，工具结果未序列化
+解决方案：AuditTool 将日志/操作项转换为纯 dict（id/user/action/status 等）
+验证方式：全量评测 50/50 通过（tool_accuracy=1.0）
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-3
+文件：agent/planner.py
+问题：工具 args 含 action 导致重复关键字参数
+现象：DocumentTool.execute() got multiple values for keyword argument 'action'
+原因分析：tool_selector 的 args 可能含 action，operation_agent 又单独传 action
+解决方案：planner 构造 PlanStep 时从 args 中剥离 action
+验证方式：全量评测 security_010 通过
+====================
+
+====================
+时间：2026-08-11
+Phase：Phase 5-3
+文件：agent/runtime.py
+问题：legacy 路径 intent 被旧工作流中文意图覆盖
+现象：intent_007/009 评测失败（intent 返回空/中文而非 IntentRouter 分类）
+原因分析：result["intent"] = result.get("intent", intent_result.intent) 优先取 legacy 状态值
+解决方案：统一 result["intent"] = intent_result.intent（始终用 Intent Router 分类）
+验证方式：全量评测 intent_accuracy=1.0
+====================

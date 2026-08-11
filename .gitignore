@@ -1,0 +1,52 @@
+# ======================
+# 敏感配置（绝不上传）
+# ======================
+.env
+.env.local
+*.env
+
+# ======================
+# Python
+# ======================
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ======================
+# IDE
+# ======================
+.idea/
+.vscode/
+*.swp
+
+# ======================
+# 数据 / 日志 / 运行产物
+# ======================
+logs/
+data/
+reports/
+*.log
+docker/etcd/
+docker/milvus/
+docker/minio/
+docker/postgres/
+docker/work-minio/
+
+# ======================
+# 前端
+# ======================
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+package-lock.json
+
+# ======================
+# 其他
+# ======================
+.claude/
+*.tmp
+.DS_Store

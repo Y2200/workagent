@@ -1,0 +1,8 @@
+POST http://127.0.0.1:8000/wechat/message
+Content-Type: text/xml; charset=UTF-8
+
+<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+<FromUserName><![CDATA[员工A]]></FromUserName>
+<Content><![CDATA[发生安全事故怎么办]]></Content>
+</xml>

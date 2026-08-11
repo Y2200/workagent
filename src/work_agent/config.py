@@ -1,0 +1,187 @@
+import sys
+
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Windows 控制台/管道默认 GBK 编码，print 非 GBK 字符（如 ✅、生僻字）会抛
+# UnicodeEncodeError。统一重配置为 UTF-8，任何导入本包的脚本自动生效。
+if hasattr(sys.stdout, "reconfigure"):
+
+    sys.stdout.reconfigure(
+        encoding="utf-8",
+        errors="replace"
+    )
+
+if hasattr(sys.stderr, "reconfigure"):
+
+    sys.stderr.reconfigure(
+        encoding="utf-8",
+        errors="replace"
+    )
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+class Settings(BaseSettings):
+
+    """
+    系统配置
+    """
+
+
+    # ======================
+    # 企业微信
+    # ======================
+
+    wechat_corp_id: str = ""
+
+    wechat_secret: str = ""
+
+    wechat_token: str = ""
+
+    wechat_agent_id: str = ""
+
+    # ======================
+    # 大模型
+    # ======================
+
+    doubao_api_key: str = ""
+
+    model_name: str = "doubao"
+
+    model_base_url: str = ""
+
+    model_temperature: float = 0.2
+
+
+
+    # ======================
+    # Redis
+    # ======================
+
+    redis_url: str = (
+        "redis://localhost:6379/0"
+    )
+
+
+    # ======================
+    # RAG
+    # ======================
+
+    knowledge_path: str = str(
+        BASE_DIR / "knowledge"
+    )
+
+
+    vector_path: str = str(
+        BASE_DIR / "data" / "faiss"
+    )
+
+
+    # ======================
+    # PostgreSQL
+    # ======================
+
+    database_url: str = (
+        "postgresql+psycopg2://postgres:postgres@localhost:5432/work_agent"
+    )
+
+
+    # ======================
+    # MinIO 文档存储
+    # 生产必须通过 .env 提供，禁止依赖默认值
+    # ======================
+
+    minio_endpoint: str = "localhost:9002"
+
+    minio_access_key: str = ""
+
+    minio_secret_key: str = ""
+
+    minio_bucket: str = "work-documents"
+
+    minio_secure: bool = False
+
+
+    # ======================
+    # JWT 认证
+    # 生产必须通过 .env 提供强随机密钥
+    # ======================
+
+    jwt_secret: str = ""
+
+    jwt_algorithm: str = "HS256"
+
+    jwt_expire_minutes: int = 1440
+
+
+    # ======================
+    # 初始管理员
+    # 生产必须通过 .env 设置强口令
+    # ======================
+
+    admin_username: str = "admin"
+
+    admin_password: str = ""
+
+
+    # ======================
+    # 租户（单租户占位，默认空）
+    # ======================
+
+    tenant_id: str = ""
+
+
+    # ======================
+    # 成本估算（元 / 1K tokens）
+    # ======================
+
+    model_cost_per_1k_tokens: float = 0.001
+
+
+    # ======================
+    # 审计日志保留天数
+    # ======================
+
+    audit_log_retention_days: int = 180
+
+
+    # ======================
+    # Prompt 管理
+    # ======================
+
+    # 默认指向 src/work_agent/prompts
+    prompt_path: str = str(
+        Path(__file__).resolve().parent / "prompts"
+    )
+
+    prompt_cache_enabled: bool = True
+
+
+    # ======================
+    # Agent 版本（审计记录）
+    # ======================
+
+    agent_version: str = "0.1.0"
+
+
+    # ======================
+    # 日志
+    # ======================
+
+    log_path: str = str(
+        BASE_DIR / "logs"
+    )
+
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
+
+
+settings = Settings()

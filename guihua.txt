@@ -1,0 +1,586 @@
+1. 总体架构
+最终架构：
+                 管理员Web端
+                     |
+                     |
+                 FastAPI
+                     |
+        -------------------------
+        |                       |
+   Knowledge Service       User Service
+        |
+        |
+   Document Pipeline
+        |
+        |
+ PDF/Word/Markdown
+        |
+        |
+ Text Split
+        |
+        |
+ Embedding
+        |
+        |
+ Milvus
+
+
+=====================================
+
+
+员工
+
+ |
+
+企业微信
+
+ |
+
+FastAPI Webhook
+
+ |
+
+LangGraph Agent
+
+ |
+
+Intent Router
+
+ |
+
+-------------------------
+
+|                       |
+
+RAG Agent          Task Agent
+
+
+|
+
+LLM
+
+
+|
+
+企业微信回复
+
+2. 核心原则（禁止违反）
+1. Prompt必须独立
+禁止：
+prompt="xxxx"
+代码里面不能出现业务Prompt。
+统一：
+prompts/
+加载。
+2. 业务解耦
+禁止：
+RAG里面写权限。
+禁止：
+Agent里面操作数据库。
+禁止：
+Web接口里面调用Milvus。
+正确：
+API
+
+↓
+
+Service
+
+↓
+
+Repository
+
+↓
+
+Database
+
+4. 第一阶段：企业知识库管理系统
+目标：
+管理员登录网站。
+上传：
+pdf
+
+docx
+
+md
+
+txt
+自动进入：
+RAG
+新增模块
+knowledge/
+
+document/
+
+storage/
+上传流程
+管理员
+
+↓
+
+Web上传文件
+
+↓
+
+FastAPI
+
+↓
+
+DocumentService
+
+↓
+
+保存MinIO
+
+↓
+
+解析文件
+
+↓
+
+文本切片
+
+↓
+
+Embedding
+
+↓
+
+Milvus
+
+↓
+
+数据库记录
+
+5. 数据库设计
+使用：
+PostgreSQL
+用户表
+users
+字段：
+id
+
+wechat_user_id
+
+username
+
+department
+
+role
+
+password_hash
+
+created_at
+文件表
+documents
+id
+
+filename
+
+file_type
+
+storage_path
+
+category
+
+uploader
+
+status
+
+created_at
+文档权限
+document_permission
+id
+
+document_id
+
+department
+
+role
+知识块
+knowledge_chunks
+id
+
+document_id
+
+milvus_id
+
+content
+Agent日志
+agent_logs
+id
+
+user_id
+
+question
+
+answer
+
+tokens
+
+cost_time
+
+created_at
+6. 第二阶段：权限系统
+目标：
+企业资料隔离。
+例如：
+研发：
+代码规范
+
+技术文档
+财务：
+报销制度
+
+财务流程
+HR：
+员工制度
+流程：
+员工问题
+
+↓
+
+查询用户
+
+↓
+
+获取部门角色
+
+↓
+
+生成permission filter
+
+↓
+
+Milvus metadata过滤
+
+↓
+
+返回结果
+
+7. 第三阶段：LangGraph Agent
+最终Graph：
+START
+
+ |
+
+Message Parser
+
+ |
+
+User Context
+
+ |
+
+Permission Check
+
+ |
+
+Intent Router
+
+
+       |
+
+ ----------------
+
+ |              |
+
+RAG Agent    Task Agent
+
+
+ |
+
+Answer Generator
+
+
+ |
+
+Wechat Sender
+
+
+ |
+
+Audit Logger
+
+
+ |
+
+END
+
+节点设计
+Message Parser
+输入：
+企业微信消息
+输出：
+{
+"user_id":"",
+"text":""
+}
+User Context
+查询：
+用户信息
+输出：
+{
+"department":"研发部",
+"role":"员工"
+}
+Router
+判断：
+制度咨询
+
+任务查询
+
+风险反馈
+
+普通聊天
+RAG Agent
+负责：
+企业知识问答。
+Task Agent
+负责：
+任务查询。
+例如：
+我的任务完成了吗
+8. 第四阶段：企业微信
+实现：
+接收消息
+接口：
+POST /wechat/callback
+解析：
+user_id
+
+msg_type
+
+content
+回复
+调用：
+企业微信API。
+9. 第五阶段：智能督导系统
+Celery
+架构：
+Celery Beat
+
+↓
+
+Supervision Agent
+
+↓
+
+Task Service
+
+↓
+
+Risk Analyzer
+
+↓
+
+Wechat Notify
+每天：
+检查：
+未开始
+
+延期
+
+风险
+
+低完成率
+
+生成：
+提醒员工
+
+提醒负责人
+
+升级风险
+10. Prompt设计
+全部放：
+prompts/
+文件：
+router.txt
+负责：
+意图分类
+rag_answer.txt
+负责：
+知识库回答
+task_agent.txt
+负责：
+任务分析
+supervision.txt
+负责：
+督导提醒
+risk.txt
+负责：
+风险判断
+11. Web管理后台
+技术：
+推荐：
+Vue3 + Element Plus
+页面：
+登录
+/login
+知识库
+/knowledge
+功能：
+上传文件
+删除
+查看状态
+权限管理
+/permission
+督导看板
+/dashboard
+显示：
+员工任务
+风险数量
+AI提醒记录
+12. 部署架构
+Docker Compose:
+nginx
+
+frontend
+
+backend
+
+postgres
+
+redis
+
+celery
+
+milvus
+
+etcd
+
+minio
+13. 开发顺序（严格执行）
+不要跳。
+Step 1
+完成：
+知识库管理
+包括：
+PDF上传
+Word上传
+MinIO
+Document Pipeline
+Milvus导入
+Step 2
+完成：
+PostgreSQL
+用户
+文档
+权限
+日志
+Step 3
+完成：
+权限过滤
+Step 4
+完成：
+LangGraph Agent
+Step 5
+完成：
+企业微信
+Step 6
+完成：
+任务督导
+Step 7
+完成：
+Web后台
+当前下一步任务
+现在代码不要继续改RAG。
+下一阶段直接开发：
+knowledge模块
+
+document模块
+
+storage模块
+
+admin API
+实现第一个企业级闭环：
+管理员登录
+
+↓
+
+上传PDF
+
+↓
+
+自动解析
+
+↓
+
+自动Embedding
+
+↓
+
+进入Milvus
+
+↓
+
+员工企业微信提问
+
+↓
+
+AI回答
+以上文档作为 Claude Code 开发上下文。
+开发要求：
+不推翻已有RAG
+不混合Prompt
+不耦合权限
+不把业务写进Agent
+保持生产级架构
+每一步完成后提供测试命令和验证结果
+优先保证可运行，再扩展功能
+
+最终版
+                企业用户
+                   |
+        ---------------------
+        |                   |
+    企业微信             Web后台
+        |                   |
+        ---------------------
+                   |
+              API Gateway
+                   |
+        =====================
+              Agent层
+        =====================
+              LangGraph
+
+        Router Agent
+             |
+    -----------------
+    |               |
+ RAG Agent      Task Agent
+    |               |
+Knowledge      Business
+ Agent          Agent
+
+
+        =====================
+             Service层
+        =====================
+
+ 文档服务
+ 用户服务
+ 权限服务
+ 任务服务
+ 通知服务
+
+
+        =====================
+              Data层
+        =====================
+
+ PostgreSQL
+ Milvus
+ MinIO
+ Redis
+
+
+        =====================
+              Infra
+        =====================
+ Docker
+ Celery
+ Nginx
+ 日志
+ 监控
