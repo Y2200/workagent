@@ -26,8 +26,7 @@ cd frontend
 npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
 npm run build
 cd "$REPO_ROOT"
-$SUDO rm -rf /opt/work-agent/frontend/dist
-$SUDO cp -r frontend/dist /opt/work-agent/frontend/dist
+# 注：构建产物即 nginx 根目录（仓库内 frontend/dist），无需拷贝
 
 echo "===== 3. 重建并重启后端 ====="
 docker compose -f deploy/docker-compose.prod.yml --env-file .env build backend
