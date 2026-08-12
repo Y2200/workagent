@@ -292,3 +292,25 @@ Phase：Phase 5-3
 解决方案：统一 result["intent"] = intent_result.intent（始终用 Intent Router 分类）
 验证方式：全量评测 intent_accuracy=1.0
 ====================
+
+====================
+时间：2026-08-12
+Phase：Phase 5-4
+文件：document/pipeline.py
+问题：管线内嵌 LLM 自动分类会拖慢全量回归
+现象：所有经 document_service.upload 的测试文档都触发真实 DeepSeek 分类调用，回归变慢且有 LLM 不确定性
+原因分析：默认 knowledge_auto_classify=True，所有上传（含测试）都走 LLM 分类
+解决方案：人工指定类别优先，仅当 document.category 为空时才自动分类（回归测试大多传 category，自动跳过 LLM）
+验证方式：test_knowledge_intelligence 六场景通过；全量回归 21/21（12 核心 + 7 Agent + 1 评测 + 1 新增）
+====================
+
+====================
+时间：2026-08-12
+Phase：Phase 5-4
+文件：knowledge/similarity.py + rag/milvus_store.py
+问题：Milvus 动态字段排除 filter 语法验证
+现象：search_with_document 需排除自身文档，filter `document_id != N` 是否受支持存疑
+原因分析：动态 int 字段支持比较表达式，但需用正确维度向量（bge 集合为 512 维，非 create_collection 默认 384）验证
+解决方案：手工验证 `metadata["tenant_id"] == "X" && document_id != N` 可用（512 维向量），无需 Python 层回退
+验证方式：test_knowledge_intelligence 场景3 相似文档命中/排除正确
+====================

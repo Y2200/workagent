@@ -107,6 +107,39 @@ class DocumentRepository:
         return document
 
 
+    def update_category(
+            self,
+            db: Session,
+            document_id: int,
+            category: str
+    ) -> bool:
+
+        """
+        更新文档分类（自动分类落库）
+
+        category 为空时不更新，返回 False
+        """
+
+        if not category:
+            return False
+
+        document = db.get(
+            Document,
+            document_id
+        )
+
+        if not document:
+            return False
+
+        document.category = category
+
+        db.add(document)
+
+        db.commit()
+
+        return True
+
+
     def update_status(
             self,
             db: Session,

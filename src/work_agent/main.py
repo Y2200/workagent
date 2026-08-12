@@ -29,6 +29,7 @@ from work_agent.wechat.service import process_message
 from work_agent.wechat.parser import parse_wechat_xml
 from work_agent.wechat.verify import verify_signature
 from work_agent.api.admin import router as admin_router
+from work_agent.api.knowledge_intelligence import router as knowledge_intelligence_router
 
 
 app = FastAPI(
@@ -39,6 +40,10 @@ app = FastAPI(
 
 app.include_router(
     admin_router
+)
+
+app.include_router(
+    knowledge_intelligence_router
 )
 
 

@@ -211,6 +211,46 @@ class OperationLogPage(BaseModel):
     page_size: int
 
 
+class SimilarDocOut(BaseModel):
+
+    document_id: int
+
+    filename: str
+
+    matched_chunks: int
+
+    max_score: float
+
+    avg_score: float
+
+
+class GraphNodeOut(BaseModel):
+
+    id: int
+
+    name: str
+
+    type: str
+
+    degree: int
+
+
+class GraphEdgeOut(BaseModel):
+
+    source: int
+
+    target: int
+
+    relation: str
+
+
+class GraphOut(BaseModel):
+
+    nodes: list[GraphNodeOut]
+
+    edges: list[GraphEdgeOut]
+
+
 class PermissionUpdateRequest(BaseModel):
 
     visibility: str = "public"

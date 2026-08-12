@@ -1,6 +1,8 @@
+from work_agent.config import settings
 from work_agent.db.session import SessionLocal
 from work_agent.document.parser import parse_document
 from work_agent.knowledge.access import build_access_from_permission_rows
+from work_agent.knowledge.classifier import DocumentClassifier
 from work_agent.rag.splitter import split_documents
 from work_agent.repositories.document_repository import DocumentRepository
 from work_agent.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
@@ -21,7 +23,8 @@ class DocumentPipeline:
             self,
             storage,
             store,
-            embedding
+            embedding,
+            classifier: DocumentClassifier | None = None
     ):
 
         self.storage = storage
@@ -29,6 +32,9 @@ class DocumentPipeline:
         self.store = store
 
         self.embedding = embedding
+
+        # 自动分类器（失败回退，不阻塞入库）
+        self.classifier = classifier or DocumentClassifier()
 
         self.document_repository = DocumentRepository()
 
@@ -73,6 +79,12 @@ class DocumentPipeline:
                 raw
             )
 
+            # 自动分类（失败回退到人工类别/未分类，不阻塞入库）
+            category = self._classify(
+                db,
+                document,
+                parsed.content,
+            )
 
             # 组装权限元数据（与 rag/permission.py 的 PermissionFilter 兼容）
             access = self._build_access(
@@ -88,7 +100,7 @@ class DocumentPipeline:
                     document.filename,
 
                 "category":
-                    document.category,
+                    category,
 
                 "access":
                     access,
@@ -119,7 +131,7 @@ class DocumentPipeline:
                 chunks,
                 self.embedding,
                 document_id=document.id,
-                category=document.category,
+                category=category,
                 tenant_id=document.tenant_id
             )
 
@@ -173,6 +185,54 @@ class DocumentPipeline:
         finally:
 
             db.close()
+
+
+    def _classify(
+            self,
+            db,
+            document,
+            content: str
+    ) -> str:
+
+        """
+        自动分类文档
+
+        人工指定类别优先，仅在类别为空时触发自动分类（减少 LLM 调用）。
+        开关关闭或分类失败 → 沿用原类别/未分类。
+        命中时同步更新 DB 记录，Milvus 使用新类别
+        """
+
+        if not settings.knowledge_auto_classify:
+
+            return document.category or ""
+
+        if document.category and document.category.strip():
+
+            # 人工类别优先，不覆盖
+            return document.category
+
+        category = self.classifier.classify(
+            title=document.filename,
+            content=content,
+            fallback=document.category or "未分类",
+        )
+
+        if category and category != document.category:
+
+            try:
+
+                self.document_repository.update_category(
+                    db,
+                    document.id,
+                    category,
+                )
+
+            except Exception:
+
+                # 分类落库失败不阻塞主流程
+                pass
+
+        return category
 
 
     def _build_access(
