@@ -180,6 +180,19 @@ class Settings(BaseSettings):
 
 
     # ======================
+    # 故障恢复（P5-5-5）
+    # ======================
+
+    # LLM 瞬时错误最大重试次数
+    llm_max_retries: int = 1
+
+    # 熔断器：连续失败阈值 / 冷却秒数
+    llm_breaker_failure_threshold: int = 5
+
+    llm_breaker_cooldown_seconds: float = 60.0
+
+
+    # ======================
     # 日志
     # ======================
 

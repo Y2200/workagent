@@ -356,3 +356,13 @@ Phase：Phase 5-5-2
 解决方案：测试改用 settings.admin_username/settings.admin_password
 验证方式：test_agent_config 场景5 通过
 ====================
+====================
+时间：2026-08-12
+Phase：Phase 5-5-5
+文件：scripts/test_failure_recovery.py
+问题：直接导入 core/resilience 未触发 UTF-8 重配置，print ✅ 报 GBK 错误
+现象：UnicodeEncodeError: 'gbk' codec can't encode character '✅'
+原因分析：config.py 的 stdout 重配置只在 import work_agent.config 时生效；测试直接 import core.resilience（不依赖 config）绕过了重配置
+解决方案：测试顶部显式 import work_agent.config（副作用触发重配置）
+验证方式：test_failure_recovery 六场景通过
+====================
