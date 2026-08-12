@@ -77,10 +77,18 @@ app.include_router(
 )
 
 
-# Web 前端跨域（开发环境放行所有来源，生产由 nginx 同源代理）
+# Web 前端跨域
+# 开发：cors_origins 留空 → 放行所有来源（宽松）
+# 生产：cors_origins=https://wkcp.online → 仅允许前端来源
+_cors_origins = [
+    origin.strip()
+    for origin in settings.cors_origins.split(",")
+    if origin.strip()
+] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

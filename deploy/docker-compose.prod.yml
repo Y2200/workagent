@@ -1,0 +1,200 @@
+# ==========================================
+# P6-1 生产编排（腾讯云 Ubuntu）
+#
+# 安全要点：
+#   - 全部服务在独立 internal 网络；仅 backend 经 127.0.0.1:8000 发布给宿主机 Nginx
+#   - 数据库/Milvus/MinIO/Redis/etcd 一律不发布任何端口（公网不可达）
+#   - 生产密码一律强制注入（${VAR:?}），无默认弱值
+#   - 全部数据卷持久化（docker compose up 重跑不丢数据）
+#   - 日志 json-file 轮转（max-size 20m / max-file 5）
+#
+# 运行（从仓库根执行，.env 位于仓库根）：
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+# ==========================================
+
+name: work-agent-prod
+
+networks:
+  internal:
+    # 普通 bridge：容器间互达 + 保留容器出网（backend 需访问 DeepSeek/HF）
+    driver: bridge
+
+volumes:
+  postgres-data:
+  milvus-etcd-data:
+  milvus-minio-data:
+  milvus-data:
+  work-minio-data:
+  redis-data:
+  # embedding 模型缓存（首次启动下载一次，重启复用）
+  hf-cache:
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+
+  # ======================
+  # PostgreSQL
+  # ======================
+  postgres:
+    image: postgres:16
+    container_name: work-agent-postgres
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-work_agent}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-work_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ======================
+  # Milvus 依赖：etcd + 内嵌 MinIO
+  # ======================
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    container_name: work-agent-etcd
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: 1000
+      ETCD_QUOTA_BACKEND_BYTES: 4294967296
+    volumes:
+      - milvus-etcd-data:/etcd
+    command: >
+      etcd
+      --advertise-client-urls=http://etcd:2379
+      --listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  milvus-minio:
+    image: minio/minio
+    container_name: work-agent-milvus-minio
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    environment:
+      # Milvus 内部对象存储凭据（强制注入，勿用默认）
+      MINIO_ROOT_USER: ${MILVUS_MINIO_USER:?请在 .env 设置 MILVUS_MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MILVUS_MINIO_PASSWORD:?请在 .env 设置 MILVUS_MINIO_PASSWORD}
+    volumes:
+      - milvus-minio-data:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.5.0
+    container_name: work-agent-milvus
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvus-data:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
+    healthcheck:
+      # 镜像含 curl（本机实测 milvusdb/milvus:v2.5.0 → /usr/bin/curl）
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  # ======================
+  # MinIO（应用文档存储，独立卷）
+  # ======================
+  work-minio:
+    image: minio/minio
+    container_name: work-agent-minio
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?请在 .env 设置 MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?请在 .env 设置 MINIO_SECRET_KEY}
+    volumes:
+      - work-minio-data:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      # 镜像含 curl（本机实测 minio/minio → /usr/bin/curl）
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # ======================
+  # Redis（应用可选依赖；卷持久化；强制口令）
+  # ======================
+  redis:
+    image: redis:7
+    container_name: work-agent-redis
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      # $${REDIS_PASSWORD}：转义为容器内环境变量，由容器 shell 展开
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ======================
+  # FastAPI backend（单 worker；仅回环发布给宿主 Nginx）
+  # ======================
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: work-agent-backend
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    env_file: ../.env
+    ports:
+      # 仅宿主机回环可达（Nginx 代理）；公网不可直连
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - hf-cache:/app/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      milvus-standalone:
+        condition: service_healthy
+      work-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
