@@ -113,6 +113,10 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
+      # v2.5.0 凭据环境变量名：MINIO_ACCESS_KEY_ID / MINIO_SECRET_ACCESS_KEY
+      # （见镜像内 /milvus/configs/milvus.yaml；与 milvus-minio 的根用户/口令一致）
+      MINIO_ACCESS_KEY_ID: ${MILVUS_MINIO_USER}
+      MINIO_SECRET_ACCESS_KEY: ${MILVUS_MINIO_PASSWORD}
     volumes:
       - milvus-data:/var/lib/milvus
     depends_on:
