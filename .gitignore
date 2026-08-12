@@ -50,3 +50,4 @@ package-lock.json
 .claude/
 *.tmp
 .DS_Store
+deploy/.last_deploy
