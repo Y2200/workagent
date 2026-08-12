@@ -13,6 +13,7 @@ from work_agent.services.trace_service import TraceService
 from work_agent.services.config_service import agent_config_service
 from work_agent.services.prompt_governance_service import prompt_governance_service
 from work_agent.services.cost_governance_service import cost_governance_service
+from work_agent.services.health_service import health_service
 
 
 rag_service = RAGService()
@@ -65,3 +66,6 @@ prompt_governance_service.register_resolver()
 
 # LLM 成本治理单例
 cost_governance_service = cost_governance_service
+
+# 健康监控单例
+health_service = health_service

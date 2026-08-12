@@ -20,6 +20,7 @@ from work_agent.agent.router.intent_router import IntentRouter
 from work_agent.agent.tools.registry import tool_registry
 from work_agent.config import settings
 from work_agent.core.audit_logger import audit_logger
+from work_agent.core.health_metrics import health_metrics
 from work_agent.core.trace import tracer
 from work_agent.db.session import SessionLocal
 from work_agent.services.conversation_service import conversation_service
@@ -319,6 +320,20 @@ class AgentRuntime:
                     result,
                 )
 
+                # 运行时健康指标
+                health_metrics.record(
+                    status=(
+                        "denied"
+                        if denied
+                        else "success"
+                    ),
+                    latency_ms=latency_ms,
+                    tokens=result.get(
+                        "token_usage",
+                        0,
+                    ),
+                )
+
                 # 记录会话活动
                 try:
 
@@ -355,6 +370,11 @@ class AgentRuntime:
                 ctx,
                 error_type=trace_error_type,
                 error_message=trace_error_message,
+                latency_ms=latency_ms,
+            )
+
+            health_metrics.record(
+                status="failed",
                 latency_ms=latency_ms,
             )
 
@@ -468,6 +488,10 @@ class AgentRuntime:
             model_name=context.model_name,
         )
 
+        latency_ms = (
+            time.monotonic() - started
+        ) * 1000
+
         audit_logger.log_error(
             ctx,
             status="denied",
@@ -476,9 +500,12 @@ class AgentRuntime:
                 f"月度预算已用完"
                 f"（{budget.get('spent')}/{budget.get('budget')}）"
             ),
-            latency_ms=(
-                time.monotonic() - started
-            ) * 1000,
+            latency_ms=latency_ms,
+        )
+
+        health_metrics.record(
+            status="denied",
+            latency_ms=latency_ms,
         )
 
         tracer.finish(status="ok")

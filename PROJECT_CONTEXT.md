@@ -130,6 +130,11 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-6 Agent Health Monitoring 已完成**：
+  - `core/health_metrics.py`：进程内指标（requests/errors/denied/latency/tokens），Runtime 各终态埋点
+  - `services/health_service.py`：组件探活（PG/Milvus/MinIO/Redis/配置中心/Prompt），Redis 可选依赖仅警告，就绪判定 = 关键三依赖
+  - API `api/health.py`：GET /health/ready（公共探针）、/api/admin/health/{components,metrics,resilience}（system:manage）
+  - 测试 `scripts/test_health_monitoring.py` 五场景（就绪/组件/指标递增/权限/存活），全量回归 27/27
 - **P5-5-5 Failure Recovery 已完成**：
   - `core/resilience.py`：retry_with_backoff（瞬时错误指数退避）、CircuitBreaker（closed→open→half_open→closed）、ResilientLLM 透明包装、全局熔断器注册表
   - `agent/llm.py`：get_llm 返回 ResilientLLM（接口不变）；config 新增 `llm_max_retries`/`llm_breaker_failure_threshold`/`llm_breaker_cooldown_seconds`
