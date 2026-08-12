@@ -130,6 +130,12 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-5 Failure Recovery 已完成**：
+  - `core/resilience.py`：retry_with_backoff（瞬时错误指数退避）、CircuitBreaker（closed→open→half_open→closed）、ResilientLLM 透明包装、全局熔断器注册表
+  - `agent/llm.py`：get_llm 返回 ResilientLLM（接口不变）；config 新增 `llm_max_retries`/`llm_breaker_failure_threshold`/`llm_breaker_cooldown_seconds`
+  - 熔断 open 快速失败（BreakerOpenError）→ 上层 Agent 捕获后走确定性回退，避免在故障服务上反复超时
+  - API `api/resilience.py`：GET /api/admin/resilience/status
+  - 测试 `scripts/test_failure_recovery.py` 六场景（重试/熔断状态机/重试成功/熔断快速失败/LLM全挂回退/HTTP），全量回归 26/26
 - **P5-5-4 LLM Cost Governance 已完成**：
   - `llm_cost_records` 表（tenant_id 隔离、request_id 关联、cost 估算）
   - `services/cost_governance_service.py`：record 记账、usage（今日/本月、按模型/用户）、get/set_budget（复用配置中心 `cost.monthly_budget`）、check_quota
