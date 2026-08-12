@@ -162,6 +162,8 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
     volumes:
       - redis-data:/data
