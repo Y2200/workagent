@@ -24,7 +24,9 @@
 - **P5-5-6 Agent Health Monitoring**：健康指标（health_metrics）+ 组件探活 + `/health/ready` 就绪 + `/api/admin/health/*`
 - **P5-5-7 Production Test Suite**：一键汇总 6 个 P5-5 子套件 + 契约断言（Agent 不直连 DB/API 分层/Prompt 外置）→ `reports/production_suite_report.json`
 - **Phase 5 Enterprise Agent Platform 全部完成** ✅
-- **下一步**：前端接入（图谱/质量/治理看板）、企业微信正式接入、Celery、生产部署（见 PROJECT_CONTEXT.md）
+- **P6-1 Production Deployment 已完成**：`deploy/` 生产部署体系（compose/nginx/scripts/README）、Dockerfile、requirements.prod.txt、.env.example、CORS 配置化、`milvus_uri` 配置
+- **部署（服务器侧）**：按 `deploy/README.md` 在腾讯云执行；**阻塞项：milvus_store.py 连 Milvus 地址接线待批准**
+- **下一步**：milvus_store 接线批准、前端接入治理看板、企业微信正式接入、Celery（见 PROJECT_CONTEXT.md）
 - **测试状态**：28/28 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 

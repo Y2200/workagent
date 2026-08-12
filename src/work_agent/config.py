@@ -68,6 +68,18 @@ class Settings(BaseSettings):
 
 
     # ======================
+    # Milvus（P6-1）
+    # pydantic-settings 自动读取环境变量 MILVUS_URI（大小写不敏感，同 redis_url 机制）
+    # 默认 localhost 兼容开发；生产 Docker 经 .env 覆盖为内部服务名
+    # 例：MILVUS_URI=milvus-standalone:19530
+    # ======================
+
+    milvus_uri: str = (
+        "http://localhost:19530"
+    )
+
+
+    # ======================
     # RAG
     # ======================
 
@@ -147,6 +159,15 @@ class Settings(BaseSettings):
     # ======================
 
     audit_log_retention_days: int = 180
+
+
+    # ======================
+    # CORS（P6-1）
+    # 逗号分隔的允许来源；留空 = 开发宽松放行（*）
+    # 生产填 https://wkcp.online
+    # ======================
+
+    cors_origins: str = ""
 
 
     # ======================

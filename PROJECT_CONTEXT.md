@@ -129,7 +129,16 @@ src/work_agent/
 - 页面：/login 登录、/knowledge 知识库管理（上传/列表/检索/详情/删除/状态轮询）、/permission 权限总览、/dashboard 看板、/logs 问答审计
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
-**Phase 5 Enterprise Agent Platform（已完成）**：
+**Phase 6-1 Production Deployment 已完成**：
+- `deploy/`：生产部署体系（`docker-compose.prod.yml` + `nginx/` + `scripts/` + `README.md` 部署手册）
+- 架构：宿主机 Nginx（Certbot TLS）→ frontend/dist + /api 代理；Docker 内部网络跑 backend/postgres/milvus/redis/work-minio；数据库/Milvus/MinIO/Redis 不发布端口，backend 仅 127.0.0.1:8000
+- 镜像：`Dockerfile`（PYTHONPATH=/app/src、torch-cpu、单 worker、HF 缓存卷不烘焙模型）+ `.dockerignore`（排除密钥/数据/测试内容）
+- 依赖：`requirements.prod.txt`（`uv lock` 重建 + `uv export` 生成，torch=+cpu）；`requirements.txt` 保持原样
+- 配置：`.env.example` 扩展生产变量；`config.py` 新增 `milvus_uri`/`cors_origins`；`main.py` CORS 配置化（开发 `*` / 生产白名单）
+- 脚本：preflight（git无.env/docker/磁盘/端口）、init-server、deploy、update、rollback、init-prod（仅 init_db+seed_admin）
+- **阻塞项**：`rag/milvus_store.py` 连 Milvus 地址接线待批准（配置字段已加，业务未改）
+- 验证：生产套件 6/6+3/3、前端 build 通过、`docker compose config` 通过、Git 无 .env/密钥
+- **服务器部署**：按 `deploy/README.md` 在腾讯云执行（本环境不连接服务器）
 - **P5-5-7 Production Test Suite 已完成**：
   - `scripts/test_production_suite.py`：一键运行 6 个 P5-5 子套件（trace/config/prompt_governance/llm_cost/failure_recovery/health）+ 生产契约断言（Agent/Tool 不直连 DB、API 分层、Prompt 外置）
   - 产出 `reports/production_suite_report.json`
