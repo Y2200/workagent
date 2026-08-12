@@ -48,6 +48,22 @@ class RBACService:
         )
 
 
+    def get_role_codes(
+            self,
+            db: Session,
+            user_id: int
+    ) -> set[str]:
+
+        """
+        解析用户全部角色码
+        """
+
+        return self.repository.get_role_codes(
+            db,
+            user_id
+        )
+
+
     # ======================
     # 角色/权限管理（供 seed 使用）
     # ======================

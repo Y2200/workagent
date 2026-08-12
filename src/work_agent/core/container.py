@@ -10,6 +10,7 @@ from work_agent.services.audit_service import AuditService
 from work_agent.services.dashboard_service import DashboardService
 from work_agent.services.permission_service import PermissionService
 from work_agent.services.trace_service import TraceService
+from work_agent.services.config_service import agent_config_service
 
 
 rag_service = RAGService()
@@ -52,3 +53,6 @@ permission_service = PermissionService(
 )
 
 trace_service = TraceService()
+
+# Agent 配置中心单例（services/config_service.py 内定义）
+agent_config_service = agent_config_service

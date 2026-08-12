@@ -130,6 +130,13 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-2 Agent Configuration Center 已完成**：
+  - `agent_configs` 表（tenant_id="" 平台级 / 租户级覆盖，JSON 值）+ `core/config_defs.py` 内置默认注册表
+  - `services/config_service.py`：取值优先级 租户→平台→内置默认，内存缓存（set 失效）
+  - Runtime 集成：planner 从配置中心读 `agent.default_top_k`；`agent.tools.enabled` 停用工具拦截（不执行 Agent，返回治理消息）
+  - RBAC 增强：`get_role_codes()`；平台级配置仅 SUPER_ADMIN 可写
+  - API `api/config.py`：GET/PUT /api/admin/configs（scope=tenant/platform）
+  - 测试 `scripts/test_agent_config.py` 六场景（默认/覆盖/隔离/top_k/停用拦截/平台权限），全量回归 23/23
 - **P5-5-1 Agent Trace 已完成**：
   - `core/trace.py`：TraceManager（contextvar 持有当前 trace，span() 嵌套父级关联，内存缓冲 + finish 单事务批量写库，失败静默不影响主链路）
   - 模型 `agent_traces` + `trace_spans`（request_id 唯一、tenant_id 隔离、parent_span_id 瀑布、attributes JSON）

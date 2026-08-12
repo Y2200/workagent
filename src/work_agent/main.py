@@ -31,6 +31,7 @@ from work_agent.wechat.verify import verify_signature
 from work_agent.api.admin import router as admin_router
 from work_agent.api.knowledge_intelligence import router as knowledge_intelligence_router
 from work_agent.api.trace import router as trace_router
+from work_agent.api.config import router as config_router
 
 
 app = FastAPI(
@@ -49,6 +50,10 @@ app.include_router(
 
 app.include_router(
     trace_router
+)
+
+app.include_router(
+    config_router
 )
 
 
