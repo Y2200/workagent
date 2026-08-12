@@ -118,4 +118,24 @@ PROMPT_METADATA = {
             "available_tools",
         ],
     },
+    # ======================
+    # 知识智能 Prompt（P5-4）
+    # ======================
+    "doc_classifier": {
+        "version": "1.0",
+        "description": "文档自动分类",
+        "variables": [
+            "title",
+            "content",
+        ],
+    },
+    "kg_extract": {
+        "version": "1.0",
+        "description": "知识图谱实体/关系抽取",
+        "variables": [
+            "title",
+            "content",
+            "entity_limit",
+        ],
+    },
 }

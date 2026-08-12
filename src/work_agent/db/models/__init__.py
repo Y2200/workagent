@@ -14,6 +14,10 @@ from work_agent.db.models.permission import Permission
 from work_agent.db.models.role_permission import RolePermission
 from work_agent.db.models.user_role import UserRole
 from work_agent.db.models.conversation import Conversation
+from work_agent.db.models.knowledge_graph import (
+    KnowledgeEntity,
+    KnowledgeRelation,
+)
 
 
 __all__ = [
@@ -28,5 +32,7 @@ __all__ = [
     "Permission",
     "RolePermission",
     "UserRole",
-    "Conversation"
+    "Conversation",
+    "KnowledgeEntity",
+    "KnowledgeRelation"
 ]

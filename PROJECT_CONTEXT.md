@@ -78,6 +78,7 @@ src/work_agent/
 │   ├── parser.py        # parse_document：pdf/docx/md/txt
 │   └── pipeline.py      # DocumentPipeline：解析→切分→Embedding→Milvus→DB
 ├── knowledge/           # KnowledgeService：检索 + 文档信息富化（纯召回）
+│   │                    # classifier（自动分类）/ graph（知识图谱）/ similarity（相似文档）/ quality（质量分析）
 ├── services/            # Service 层
 │   ├── document_service.py  # DocumentService：upload（异步边界）/delete/list/get
 │   └── auth_service.py      # bcrypt 哈希 + JWT
@@ -129,6 +130,17 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-4 Knowledge Intelligence 已完成**：
+  - `knowledge/classifier.py`：DocumentClassifier（LLM 自动分类，`doc_classifier` Prompt，失败回退人工类别/未分类）
+  - 管线自动分类：`document/pipeline.py` 解析后钩入（人工指定类别优先，仅空类别时触发；落库 + 同步 Milvus category）
+  - `knowledge/graph.py`：KnowledgeGraphService（实体/关系抽取，`kg_extract` Prompt，LLM 失败回退确定性高频词+共现）
+  - 图谱存储：`knowledge_entities` + `knowledge_relations` 表（实体按 tenant+name 唯一合并，关系按文档重建幂等）
+  - `knowledge/similarity.py`：SimilarDocumentService（逐 chunk 向量检索，Milvus filter `document_id != N` 排除自身，聚合匹配块/最高分）
+  - `knowledge/quality.py`：KnowledgeQualityService（质量体检：overview/chunk_stats/chunk_length/classification/duplicates/consistency/health_score）
+  - API：`api/knowledge_intelligence.py`（GET /quality、GET /similar/{id}、GET /graph、POST /graph/build 按需构建），response_model 校验通过
+  - config：`knowledge_auto_classify` / `kg_entity_limit`
+  - 测试：`scripts/test_knowledge_intelligence.py` 六场景（分类/图谱/相似/质量/跨租户/LLM 回退），HTTP 冒烟通过
+  - 全量回归 21/21
 - **P5-3 Agent Evaluation System 已完成**：
   - `agent/evaluation/`：dataset（数据加载）+ evaluator（经 AgentRuntime 执行）+ metrics（6 指标）+ report（JSON 报告）
   - Golden Dataset：`evaluation/datasets/agent_cases.json`（50 案例：intent/tool/agent/security/regression 各 10）
@@ -294,6 +306,7 @@ python -m work_agent.scripts.test_agent_planner           # Agent Planner
 python -m work_agent.scripts.test_multi_agent             # Multi Agent
 python -m work_agent.scripts.test_agent_evaluation        # Agent 评测系统
 python -m work_agent.scripts.run_agent_evaluation         # 运行完整评测（50 案例）
+python -m work_agent.scripts.test_knowledge_intelligence  # P5-4 知识智能（分类/图谱/相似/质量）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
@@ -305,8 +318,10 @@ python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
 
 当前完成：Phase 1 闭环、Phase 2 多租户、Phase 3-1 审计、Phase 3-2 企业治理（驾驶舱/审计生命周期/操作审计/RBAC/权限管理）。
 
-**下一优先级（Phase 4）**
-1. **Agent 智能化升级**：LLM Intent Router、Tool Calling、多 Agent 协作、企业知识分析、风险识别、自动工作流
+**Phase 5（Enterprise Agent Platform）已完成**：Planner → Multi-Agent → 评测系统 → 知识智能。
+
+**下一优先级**
+1. **前端接入 P5-4**：知识图谱可视化页 + 知识质量看板页（数据接口已就绪）
 2. **企业微信正式接入**：wechat/verify.py 签名校验目前是假的（直接回显 echostr）；sender 已可发消息但 notify 节点只 print
 3. **Celery 替换异步管线**：DocumentService._dispatch 是唯一替换点
 4. **前端菜单按权限过滤**：RBAC 权限码驱动菜单显示
