@@ -35,6 +35,7 @@ from work_agent.api.config import router as config_router
 from work_agent.api.prompt import router as prompt_router
 from work_agent.api.cost import router as cost_router
 from work_agent.api.resilience import router as resilience_router
+from work_agent.api.health import router as health_router
 
 
 app = FastAPI(
@@ -69,6 +70,10 @@ app.include_router(
 
 app.include_router(
     resilience_router
+)
+
+app.include_router(
+    health_router
 )
 
 

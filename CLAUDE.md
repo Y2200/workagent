@@ -21,8 +21,9 @@
 - **P5-5-3 Prompt Governance**：Prompt 生命周期（prompt_versions + seed 基线 + 草稿/审批/激活/回滚 + PromptManager 治理 resolver + `/api/admin/prompts`）
 - **P5-5-4 LLM Cost Governance**：成本记账（llm_cost_records）+ 月度预算 + 超限拦截（LLM 前）+ `/api/admin/cost/*`
 - **P5-5-5 Failure Recovery**：重试+退避、熔断器（closed/open/half-open）、ResilientLLM 透明包装、LLM 全挂确定性回退 + `/api/admin/resilience/status`
-- **下一步**：P5-5-6 Health → P5-5-7 Suite（见 PROJECT_CONTEXT.md）
-- **测试状态**：26/26 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
+- **P5-5-6 Agent Health Monitoring**：健康指标（health_metrics）+ 组件探活 + `/health/ready` 就绪 + `/api/admin/health/*`
+- **下一步**：P5-5-7 Production Test Suite（见 PROJECT_CONTEXT.md）
+- **测试状态**：27/27 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 
 ## 架构铁律（不可违反）
