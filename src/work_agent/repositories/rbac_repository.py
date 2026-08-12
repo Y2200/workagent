@@ -41,6 +41,32 @@ class RBACRepository:
         }
 
 
+    def get_role_codes(
+            self,
+            db: Session,
+            user_id: int
+    ) -> set[str]:
+
+        """
+        解析用户全部角色码
+        """
+
+        rows = (
+            db.query(Role.code)
+            .join(
+                UserRole,
+                UserRole.role_id == Role.id,
+            )
+            .filter(UserRole.user_id == user_id)
+            .all()
+        )
+
+        return {
+            code
+            for (code,) in rows
+        }
+
+
     def get_role_by_code(
             self,
             db: Session,

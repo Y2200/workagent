@@ -22,6 +22,7 @@ from work_agent.db.models.trace import (
     AgentTrace,
     TraceSpan,
 )
+from work_agent.db.models.agent_config import AgentConfig
 
 
 __all__ = [
@@ -40,5 +41,6 @@ __all__ = [
     "KnowledgeEntity",
     "KnowledgeRelation",
     "AgentTrace",
-    "TraceSpan"
+    "TraceSpan",
+    "AgentConfig"
 ]

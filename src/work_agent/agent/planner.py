@@ -23,14 +23,50 @@ class AgentPlanner:
     def __init__(
             self,
             llm=None,
-            selector=None
+            selector=None,
+            config_service=None
     ):
 
         self.llm = llm or get_llm()
 
         self.selector = selector or tool_selector
 
+        self.config_service = config_service
+
         self.last_prompt_version = ""
+
+
+    def _top_k(self, context) -> int:
+
+        """
+        从配置中心读取知识检索 top_k（缺省 5）
+        """
+
+        config_service = self._get_config_service()
+
+        if config_service:
+
+            value = config_service.get(
+                "agent.default_top_k",
+                context.tenant_id,
+            )
+
+            if isinstance(value, int) and value > 0:
+                return value
+
+        return 5
+
+
+    def _get_config_service(self):
+
+        if self.config_service is None:
+
+            # 延迟导入，避免容器初始化循环依赖
+            from work_agent.core.container import agent_config_service
+
+            self.config_service = agent_config_service
+
+        return self.config_service
 
 
     def plan(
@@ -61,7 +97,7 @@ class AgentPlanner:
                         step_id=1,
                         tool="knowledge_tool",
                         action="search",
-                        args={"top_k": 5},
+                        args={"top_k": self._top_k(context)},
                         description="检索企业知识库",
                     ),
                 ],
@@ -132,7 +168,7 @@ class AgentPlanner:
                         step_id=1,
                         tool="analysis_tool",
                         action="analyze",
-                        args={"top_k": 5},
+                        args={"top_k": self._top_k(context)},
                         description="风险/任务分析",
                     ),
                 ],

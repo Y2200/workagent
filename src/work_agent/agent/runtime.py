@@ -37,12 +37,18 @@ class AgentRuntime:
     def __init__(
             self,
             intent_router: IntentRouter | None = None,
-            supervisor=None
+            supervisor=None,
+            planner=None,
+            config_service=None
     ):
 
         self.intent_router = intent_router or IntentRouter()
 
         self.supervisor = supervisor or supervisor_agent
+
+        self.planner = planner or agent_planner
+
+        self.config_service = config_service
 
 
     def execute(
@@ -169,7 +175,7 @@ class AgentRuntime:
 
             with tracer.span("planner", component="planner"):
 
-                plan = agent_planner.plan(
+                plan = self.planner.plan(
                     message=message,
                     intent_result=intent_result,
                     context=context,
@@ -181,29 +187,61 @@ class AgentRuntime:
                 )
 
             # ======================
+            # 配置中心：工具停用拦截（不执行 Agent）
+            # ======================
+
+            disabled = self._disabled_tools(
+                context,
+                plan,
+            )
+
+            # ======================
             # Supervisor → 专业 Agent → Tool
             # ======================
 
             with tracer.span("supervisor", component="supervisor"):
 
-                agent_result = self.supervisor.dispatch(
-                    context=context,
-                    plan=plan,
-                    message=message,
-                )
+                if disabled:
 
-                result = agent_result.to_dict()
+                    # 治理拦截：配置中心停用工具，返回明确消息
+                    result = {
+                        "response": (
+                            "相关工具已停用："
+                            + "、".join(disabled)
+                            + "，请联系管理员。"
+                        ),
+                        "permission_denied": False,
+                        "token_usage": 0,
+                        "knowledge_sources": [],
+                        "agent": "config_center",
+                        "plan_kind": plan.kind,
+                        "tools_called": [],
+                        "tool_calls": [],
+                    }
 
-                # 评测观测字段（additive）
-                result["agent"] = agent_result.agent
+                else:
 
-                result["plan_kind"] = plan.kind
+                    agent_result = self.supervisor.dispatch(
+                        context=context,
+                        plan=plan,
+                        message=message,
+                    )
+
+                    result = agent_result.to_dict()
+
+                    # 评测观测字段（additive）
+                    result["agent"] = agent_result.agent
+
+                    result["plan_kind"] = plan.kind
 
                 # intent 统一用 Intent Router 的分类（legacy 路径不覆盖）
                 result["intent"] = intent_result.intent
 
                 tracer.add_attributes(
-                    agent=agent_result.agent,
+                    agent=result.get(
+                        "agent",
+                        "",
+                    ),
                     plan_kind=plan.kind,
                     tools=result.get(
                         "tools_called",
@@ -308,6 +346,52 @@ class AgentRuntime:
                 error_type=trace_error_type,
                 error_message=trace_error_message,
             )
+
+
+    def _disabled_tools(
+            self,
+            context,
+            plan
+    ) -> list[str]:
+
+        """
+        配置中心停用的工具列表（agent.tools.enabled）
+
+        未设置 = 全部启用
+        """
+
+        config_service = self._get_config_service()
+
+        if config_service is None:
+            return []
+
+        enabled = config_service.get(
+            "agent.tools.enabled",
+            context.tenant_id,
+        )
+
+        if enabled is None or not isinstance(enabled, list):
+            return []
+
+        enabled_set = set(enabled)
+
+        return [
+            step.tool
+            for step in (plan.steps or [])
+            if step.tool and step.tool not in enabled_set
+        ]
+
+
+    def _get_config_service(self):
+
+        if self.config_service is None:
+
+            # 延迟导入，避免容器初始化循环依赖
+            from work_agent.core.container import agent_config_service
+
+            self.config_service = agent_config_service
+
+        return self.config_service
 
 
 # 全局单例

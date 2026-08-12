@@ -335,3 +335,24 @@ Phase：Phase 5-5-1
 解决方案：确认主链路各阶段均在 try 内，finish 置于 finally；追踪写库单事务且失败静默
 验证方式：test_agent_trace 场景3（异常 span 记 error）通过
 ====================
+====================
+时间：2026-08-12
+Phase：Phase 5-5-2
+文件：services/config_service.py
+问题：类方法 list 遮蔽内置 list 类型，注解失败
+现象：`def list_keys(self) -> list[str]:` 抛 TypeError: 'function' object is not subscriptable
+原因分析：类体内已定义方法 list()，在类作用域内解析注解时 list 指向该方法而非内置类型
+解决方案：重命名方法 list → list_configs，同步 API 调用
+验证方式：test_agent_config 场景5 通过
+====================
+
+====================
+时间：2026-08-12
+Phase：Phase 5-5-2
+文件：scripts/test_agent_config.py
+问题：平台级配置测试登录 admin 失败
+现象：KeyError: 'access_token'，admin 登录返回错误
+原因分析：admin 口令来自 .env 的 settings.admin_password，非硬编码 test123
+解决方案：测试改用 settings.admin_username/settings.admin_password
+验证方式：test_agent_config 场景5 通过
+====================

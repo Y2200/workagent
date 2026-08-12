@@ -343,6 +343,31 @@ class TraceDetailOut(BaseModel):
     waterfall: list[WaterfallNodeOut] = []
 
 
+class ConfigOut(BaseModel):
+
+    key: str
+
+    value: object | None
+
+    scope: str
+
+    description: str
+
+    updated_by: str
+
+    updated_at: datetime | None
+
+
+class ConfigUpdateRequest(BaseModel):
+
+    value: object | None = None
+
+    description: str = ""
+
+    # tenant（租户覆盖）/ platform（平台级，需 SUPER_ADMIN）
+    scope: str = "tenant"
+
+
 class PermissionUpdateRequest(BaseModel):
 
     visibility: str = "public"
