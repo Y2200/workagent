@@ -48,15 +48,18 @@ class AgentContext:
             permissions: set[str] | None = None,
             conversation_id: str | None = None,
             model_name: str = "",
-            agent_version: str = ""
+            agent_version: str = "",
+            request_id: str | None = None
     ) -> "AgentContext":
 
         """
         从 User 构建上下文
+
+        request_id 由调用方注入（与审计/追踪对齐），缺省自动生成
         """
 
         return cls(
-            request_id=str(uuid4()),
+            request_id=request_id or str(uuid4()),
             tenant_id=user.tenant_id,
             user_id=user.id,
             username=user.username or "",
