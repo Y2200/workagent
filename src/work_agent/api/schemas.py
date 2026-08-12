@@ -368,6 +368,48 @@ class ConfigUpdateRequest(BaseModel):
     scope: str = "tenant"
 
 
+class PromptListOut(BaseModel):
+
+    name: str
+
+    active_version: str | None
+
+    content: str | None
+
+
+class PromptHistoryOut(BaseModel):
+
+    id: int
+
+    name: str
+
+    version: str
+
+    status: str
+
+    description: str
+
+    updated_by: str
+
+    activated_at: datetime | None
+
+    created_at: datetime
+
+    content: str
+
+
+class PromptCreateDraftRequest(BaseModel):
+
+    content: str
+
+    description: str = ""
+
+
+class PromptActivateRequest(BaseModel):
+
+    version: str
+
+
 class PermissionUpdateRequest(BaseModel):
 
     visibility: str = "public"

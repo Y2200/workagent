@@ -44,6 +44,10 @@ class PromptManager:
         # 名称 → {name, version, content}
         self._cache: dict[str, dict] = {}
 
+        # Prompt 治理 resolver（P5-5-3）
+        # 若返回 active DB 版本则优先使用，否则回退文件
+        self._governance_resolver = None
+
 
     def load(
             self,
@@ -64,6 +68,22 @@ class PromptManager:
         if self.cache_enabled and name in self._cache:
 
             return self._cache[name]
+
+        governed = self._resolve_governed(name)
+
+        if governed:
+
+            result = {
+                "name": name,
+                "version": governed["version"],
+                "content": governed["content"],
+            }
+
+            if self.cache_enabled:
+
+                self._cache[name] = result
+
+            return result
 
         content = self._read(name)
 
@@ -122,6 +142,39 @@ class PromptManager:
         """
 
         return list(self.metadata.keys())
+
+
+    def set_governance_resolver(
+            self,
+            resolver=None
+    ) -> None:
+
+        """
+        注册 Prompt 治理 resolver（P5-5-3）
+
+        resolver(name) → {version, content} | None
+        None 表示无治理版本，回退文件
+        """
+
+        self._governance_resolver = resolver
+
+
+    def _resolve_governed(
+            self,
+            name: str
+    ) -> dict | None:
+
+        if self._governance_resolver is None:
+            return None
+
+        try:
+
+            return self._governance_resolver(name)
+
+        except Exception:
+
+            # 治理解析失败回退文件
+            return None
 
 
     def _read(
