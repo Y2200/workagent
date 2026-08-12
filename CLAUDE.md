@@ -14,10 +14,11 @@
 
 ## 当前状态（v0.5-agent-platform 里程碑）
 
-- **已完成**：Phase 1（知识库闭环）→ Phase 2（多租户）→ Phase 3-1（审计）→ Phase 3-2（运营治理）→ 架构审查 PASS → Phase 4（Agent 智能化：IntentRouter/PromptManager/Runtime/ToolCalling/Context/Audit）→ **Phase 5（Planner/MultiAgent/Evaluation/Knowledge Intelligence）全部完成**
+- **已完成**：Phase 1（知识库闭环）→ Phase 2（多租户）→ Phase 3-1（审计）→ Phase 3-2（运营治理）→ 架构审查 PASS → Phase 4（Agent 智能化：IntentRouter/PromptManager/Runtime/ToolCalling/Context/Audit）→ **Phase 5（Planner/MultiAgent/Evaluation/Knowledge Intelligence 已完成）→ P5-5 Enterprise Production Hardening（进行中）**
 - **P5-4 Knowledge Intelligence**：管线自动分类（人工类别优先）、知识图谱（LLM 抽取+确定性回退）、相似文档检测、质量分析（`/api/admin/knowledge/*`）
-- **下一步**：前端接入 P5-4（图谱/质量看板）、企业微信正式接入、Celery、生产部署（见 PROJECT_CONTEXT.md）
-- **测试状态**：21/21 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
+- **P5-5-1 Agent Trace**：请求链路追踪（agent_traces/trace_spans + TraceManager + Runtime 五阶段 span + `/api/admin/traces`）
+- **下一步**：P5-5-2 Agent Configuration Center → P5-5-3 Prompt Governance → P5-5-4 Cost → P5-5-5 Recovery → P5-5-6 Health → P5-5-7 Suite（见 PROJECT_CONTEXT.md）
+- **测试状态**：22/22 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 
 ## 架构铁律（不可违反）

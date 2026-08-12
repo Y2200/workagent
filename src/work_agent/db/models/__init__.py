@@ -18,6 +18,10 @@ from work_agent.db.models.knowledge_graph import (
     KnowledgeEntity,
     KnowledgeRelation,
 )
+from work_agent.db.models.trace import (
+    AgentTrace,
+    TraceSpan,
+)
 
 
 __all__ = [
@@ -34,5 +38,7 @@ __all__ = [
     "UserRole",
     "Conversation",
     "KnowledgeEntity",
-    "KnowledgeRelation"
+    "KnowledgeRelation",
+    "AgentTrace",
+    "TraceSpan"
 ]

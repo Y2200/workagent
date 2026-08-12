@@ -314,3 +314,24 @@ Phase：Phase 5-4
 解决方案：手工验证 `metadata["tenant_id"] == "X" && document_id != N` 可用（512 维向量），无需 Python 层回退
 验证方式：test_knowledge_intelligence 场景3 相似文档命中/排除正确
 ====================
+====================
+时间：2026-08-12
+Phase：Phase 5-5-1
+文件：scripts/test_agent_trace.py
+问题：Agent Trace 断言失败（get_trace 返回 None）
+现象：追踪已写入 DB（1 trace + 5 spans），但按 request_id + tenant_a("1") 查不到
+原因分析：员工A 是设计上的默认单租户用户 tenant_id=""（企业微信闭环用），而测试用 _tenant_id("ww_corp_A")="1" 比较，租户校验不匹配
+解决方案：测试改用租户 A 用户 A财务员工（tenant_id="1"），tenant_a 从 user.tenant_id 取，隔离断言用 B 租户 id
+验证方式：test_agent_trace 场景1/2 通过
+====================
+
+====================
+时间：2026-08-12
+Phase：Phase 5-5-1
+文件：agent/runtime.py + core/trace.py
+问题：Runtime 集成追踪后异常路径未收尾
+现象：若 context_builder/intent_router 阶段抛异常（try 块之前），finally 不执行 → trace 永不落库
+原因分析：tracer.finish 挂在 exec 主 try/finally 上，但 start 与 try 之间还有 span 代码段
+解决方案：确认主链路各阶段均在 try 内，finish 置于 finally；追踪写库单事务且失败静默
+验证方式：test_agent_trace 场景3（异常 span 记 error）通过
+====================

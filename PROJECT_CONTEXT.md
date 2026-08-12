@@ -130,6 +130,12 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-1 Agent Trace 已完成**：
+  - `core/trace.py`：TraceManager（contextvar 持有当前 trace，span() 嵌套父级关联，内存缓冲 + finish 单事务批量写库，失败静默不影响主链路）
+  - 模型 `agent_traces` + `trace_spans`（request_id 唯一、tenant_id 隔离、parent_span_id 瀑布、attributes JSON）
+  - Runtime 集成：context_builder/intent_router/planner/supervisor/audit 五阶段 span，request_id 统一注入 AgentContext（与审计对齐）
+  - `services/trace_service.py`（租户隔离分页 + 详情 + 瀑布）+ `api/trace.py`（GET /traces、GET /traces/{request_id}）
+  - 测试 `scripts/test_agent_trace.py` 五场景（正常执行/跨租户/异常路径/空操作/HTTP），全量回归 22/22
 - **P5-4 Knowledge Intelligence 已完成**：
   - `knowledge/classifier.py`：DocumentClassifier（LLM 自动分类，`doc_classifier` Prompt，失败回退人工类别/未分类）
   - 管线自动分类：`document/pipeline.py` 解析后钩入（人工指定类别优先，仅空类别时触发；落库 + 同步 Milvus category）

@@ -11,6 +11,8 @@ wechat/service.py 不再承担 Agent 编排，只负责微信协议/身份解析
 
 import time
 
+from uuid import uuid4
+
 from work_agent.agent.agents.supervisor import supervisor_agent
 from work_agent.agent.context import AgentContext
 from work_agent.agent.planner import agent_planner
@@ -18,6 +20,7 @@ from work_agent.agent.router.intent_router import IntentRouter
 from work_agent.agent.tools.registry import tool_registry
 from work_agent.config import settings
 from work_agent.core.audit_logger import audit_logger
+from work_agent.core.trace import tracer
 from work_agent.db.session import SessionLocal
 from work_agent.services.conversation_service import conversation_service
 from work_agent.services.rbac_service import RBACService
@@ -66,54 +69,81 @@ class AgentRuntime:
 
         started = time.monotonic()
 
-        # ======================
-        # Context Builder（含 RBAC 权限解析）
-        # ======================
+        # 统一 request_id：追踪 / 审计 / 会话对齐
+        request_id = str(uuid4())
 
-        db = SessionLocal()
-
-        try:
-
-            permissions = RBACService().get_permission_codes(
-                db,
-                user.id
-            )
-
-        finally:
-
-            db.close()
-
-        # 会话管理：同一 (租户, 用户, 渠道) 复用会话
-        conversation_id = conversation_service.get_or_create(
+        # 追踪：开启（纯增量，失败静默）
+        tracer.start(
+            request_id=request_id,
             tenant_id=user.tenant_id,
             user_id=user.id,
             channel=channel,
         )
 
-        context = AgentContext.build(
-            user=user,
-            channel=channel,
-            permissions=permissions,
-            conversation_id=str(conversation_id),
-            model_name=settings.model_name,
-            agent_version=settings.agent_version,
-        )
+        trace_status = "ok"
+
+        trace_error_type = ""
+
+        trace_error_message = ""
+
+        # ======================
+        # Context Builder（含 RBAC 权限解析）
+        # ======================
+
+        with tracer.span("context_builder", component="context_builder"):
+
+            db = SessionLocal()
+
+            try:
+
+                permissions = RBACService().get_permission_codes(
+                    db,
+                    user.id
+                )
+
+            finally:
+
+                db.close()
+
+            # 会话管理：同一 (租户, 用户, 渠道) 复用会话
+            conversation_id = conversation_service.get_or_create(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                channel=channel,
+            )
+
+            context = AgentContext.build(
+                user=user,
+                channel=channel,
+                permissions=permissions,
+                conversation_id=str(conversation_id),
+                model_name=settings.model_name,
+                agent_version=settings.agent_version,
+                request_id=request_id,
+            )
 
         # ======================
         # Intent Router
         # ======================
 
-        intent_result = self.intent_router.route(
-            message,
-            user_context=context.to_user_context(),
-            tenant_context={
-                "tenant_id": context.tenant_id,
-            },
-        )
+        with tracer.span("intent_router", component="intent_router"):
 
-        context.prompt_version = (
-            self.intent_router.last_prompt_version
-        )
+            intent_result = self.intent_router.route(
+                message,
+                user_context=context.to_user_context(),
+                tenant_context={
+                    "tenant_id": context.tenant_id,
+                },
+            )
+
+            context.prompt_version = (
+                self.intent_router.last_prompt_version
+            )
+
+            tracer.add_attributes(
+                intent=intent_result.intent,
+                confidence=intent_result.confidence,
+            )
 
         # ======================
         # Audit：记录开始
@@ -134,38 +164,52 @@ class AgentRuntime:
         try:
 
             # ======================
-            # Planner + Tool Executor
-            # ======================
-
-            # ======================
             # Planner：生成执行计划
             # ======================
 
-            plan = agent_planner.plan(
-                message=message,
-                intent_result=intent_result,
-                context=context,
-            )
+            with tracer.span("planner", component="planner"):
+
+                plan = agent_planner.plan(
+                    message=message,
+                    intent_result=intent_result,
+                    context=context,
+                )
+
+                tracer.add_attributes(
+                    plan_kind=plan.kind,
+                    steps=len(plan.steps),
+                )
 
             # ======================
             # Supervisor → 专业 Agent → Tool
             # ======================
 
-            agent_result = self.supervisor.dispatch(
-                context=context,
-                plan=plan,
-                message=message,
-            )
+            with tracer.span("supervisor", component="supervisor"):
 
-            result = agent_result.to_dict()
+                agent_result = self.supervisor.dispatch(
+                    context=context,
+                    plan=plan,
+                    message=message,
+                )
 
-            # 评测观测字段（additive）
-            result["agent"] = agent_result.agent
+                result = agent_result.to_dict()
 
-            result["plan_kind"] = plan.kind
+                # 评测观测字段（additive）
+                result["agent"] = agent_result.agent
 
-            # intent 统一用 Intent Router 的分类（legacy 路径不覆盖）
-            result["intent"] = intent_result.intent
+                result["plan_kind"] = plan.kind
+
+                # intent 统一用 Intent Router 的分类（legacy 路径不覆盖）
+                result["intent"] = intent_result.intent
+
+                tracer.add_attributes(
+                    agent=agent_result.agent,
+                    plan_kind=plan.kind,
+                    tools=result.get(
+                        "tools_called",
+                        [],
+                    ),
+                )
 
             latency_ms = (
                 time.monotonic() - started
@@ -181,47 +225,49 @@ class AgentRuntime:
             # Audit：记录完成
             # ======================
 
-            audit_logger.log_success(
-                ctx,
-                answer=result.get(
-                    "response",
-                    ""
-                ),
-                intent=result.get(
-                    "intent",
-                    ""
-                ),
-                retrieval_documents=result.get(
-                    "knowledge_sources",
-                    []
-                ),
-                status=(
-                    "denied"
-                    if denied
-                    else "success"
-                ),
-                latency_ms=latency_ms,
-                token_usage=result.get(
-                    "token_usage",
-                    0
-                ),
-                prompt_version=context.prompt_version,
-                intent_confidence=intent_result.confidence,
-                tools_called=result.get(
-                    "tools_called",
-                    [],
-                ),
-            )
+            with tracer.span("audit", component="audit"):
 
-            # 记录会话活动
-            try:
-
-                conversation_service.touch(
-                    int(context.conversation_id),
+                audit_logger.log_success(
+                    ctx,
+                    answer=result.get(
+                        "response",
+                        ""
+                    ),
+                    intent=result.get(
+                        "intent",
+                        ""
+                    ),
+                    retrieval_documents=result.get(
+                        "knowledge_sources",
+                        []
+                    ),
+                    status=(
+                        "denied"
+                        if denied
+                        else "success"
+                    ),
+                    latency_ms=latency_ms,
+                    token_usage=result.get(
+                        "token_usage",
+                        0
+                    ),
+                    prompt_version=context.prompt_version,
+                    intent_confidence=intent_result.confidence,
+                    tools_called=result.get(
+                        "tools_called",
+                        [],
+                    ),
                 )
 
-            except Exception:
-                pass
+                # 记录会话活动
+                try:
+
+                    conversation_service.touch(
+                        int(context.conversation_id),
+                    )
+
+                except Exception:
+                    pass
 
             result["request_id"] = context.request_id
 
@@ -235,18 +281,33 @@ class AgentRuntime:
             # Audit：记录失败
             # ======================
 
+            trace_status = "error"
+
+            trace_error_type = type(exc).__name__
+
+            trace_error_message = str(exc)
+
             latency_ms = (
                 time.monotonic() - started
             ) * 1000
 
             audit_logger.log_error(
                 ctx,
-                error_type=type(exc).__name__,
-                error_message=str(exc),
+                error_type=trace_error_type,
+                error_message=trace_error_message,
                 latency_ms=latency_ms,
             )
 
             raise
+
+        finally:
+
+            # 追踪收尾（写库单事务，失败静默）
+            tracer.finish(
+                status=trace_status,
+                error_type=trace_error_type,
+                error_message=trace_error_message,
+            )
 
 
 # 全局单例

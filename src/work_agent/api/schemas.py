@@ -251,6 +251,98 @@ class GraphOut(BaseModel):
     edges: list[GraphEdgeOut]
 
 
+class TraceOut(BaseModel):
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+
+    request_id: str
+
+    tenant_id: str
+
+    user_id: int | None
+
+    channel: str
+
+    status: str
+
+    total_duration_ms: int
+
+    span_count: int
+
+    created_at: datetime
+
+
+class TracePage(BaseModel):
+
+    items: list[TraceOut]
+
+    total: int
+
+    page: int
+
+    page_size: int
+
+
+class TraceSpanOut(BaseModel):
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+
+    span_id: str
+
+    parent_span_id: str | None
+
+    name: str
+
+    component: str
+
+    duration_ms: int
+
+    status: str
+
+    error_type: str | None
+
+    error_message: str | None
+
+    attributes: dict | None
+
+
+class WaterfallNodeOut(BaseModel):
+
+    span_id: str
+
+    name: str
+
+    component: str
+
+    duration_ms: int
+
+    status: str
+
+    attributes: dict | None
+
+    children: list["WaterfallNodeOut"] = []
+
+
+WaterfallNodeOut.model_rebuild()
+
+
+class TraceDetailOut(BaseModel):
+
+    trace: TraceOut
+
+    spans: list[TraceSpanOut]
+
+    waterfall: list[WaterfallNodeOut] = []
+
+
 class PermissionUpdateRequest(BaseModel):
 
     visibility: str = "public"

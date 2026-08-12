@@ -9,6 +9,7 @@ from work_agent.services.auth_service import AuthService
 from work_agent.services.audit_service import AuditService
 from work_agent.services.dashboard_service import DashboardService
 from work_agent.services.permission_service import PermissionService
+from work_agent.services.trace_service import TraceService
 
 
 rag_service = RAGService()
@@ -49,3 +50,5 @@ dashboard_service = DashboardService()
 permission_service = PermissionService(
     store=rag_service.store,
 )
+
+trace_service = TraceService()
