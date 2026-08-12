@@ -130,6 +130,12 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-4 LLM Cost Governance 已完成**：
+  - `llm_cost_records` 表（tenant_id 隔离、request_id 关联、cost 估算）
+  - `services/cost_governance_service.py`：record 记账、usage（今日/本月、按模型/用户）、get/set_budget（复用配置中心 `cost.monthly_budget`）、check_quota
+  - Runtime 集成：**预算检查在调用 LLM 之前**，超限 → 优雅消息 + denied 审计（budget_exceeded）+ 不调 LLM；执行完成后按 token_usage 记账（失败静默）
+  - API `api/cost.py`：GET /cost/usage、GET/PUT /cost/budget
+  - 测试 `scripts/test_llm_cost.py` 六场景（记账聚合/预算/超限拦截/隔离/HTTP），全量回归 25/25
 - **P5-5-3 Prompt Governance 已完成**：
   - `prompt_versions` 表（draft/approved/active/deprecated 状态机，tenant_id="" 平台级）
   - `services/prompt_governance_service.py`：seed_from_files 基线、create_draft（版本自增）、approve、activate（唯一 active + 清缓存）、deprecate、回滚

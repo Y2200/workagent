@@ -129,6 +129,22 @@ class AgentRuntime:
             )
 
         # ======================
+        # LLM 成本治理：预算拦截（在调用 LLM 之前）
+        # ======================
+
+        quota = self._check_quota(context)
+
+        if quota is not None and not quota["allowed"]:
+
+            return self._budget_blocked(
+                context=context,
+                channel=channel,
+                message=message,
+                budget=quota,
+                started=started,
+            )
+
+        # ======================
         # Intent Router
         # ======================
 
@@ -297,6 +313,12 @@ class AgentRuntime:
                     ),
                 )
 
+                # LLM 成本记账（失败静默）
+                self._record_cost(
+                    context,
+                    result,
+                )
+
                 # 记录会话活动
                 try:
 
@@ -392,6 +414,139 @@ class AgentRuntime:
             self.config_service = agent_config_service
 
         return self.config_service
+
+
+    # ======================
+    # LLM 成本治理
+    # ======================
+
+    def _check_quota(self, context):
+
+        """
+        校验租户预算额度；成本服务不可用时返回 None（放行）
+        """
+
+        cost_service = self._get_cost_service()
+
+        if cost_service is None:
+            return None
+
+        try:
+
+            return cost_service.check_quota(
+                context.tenant_id,
+            )
+
+        except Exception:
+
+            return None
+
+
+    def _budget_blocked(
+            self,
+            *,
+            context,
+            channel: str,
+            message: str,
+            budget: dict,
+            started: float
+    ) -> dict:
+
+        """
+        预算超限：记录 denied 审计并返回优雅消息（不调用 LLM）
+        """
+
+        ctx = audit_logger.log_request(
+            request_id=context.request_id,
+            tenant_id=context.tenant_id,
+            user_id=context.user_id,
+            department=context.department,
+            role=context.role,
+            channel=channel,
+            question=message,
+            agent_version=context.agent_version,
+            model_name=context.model_name,
+        )
+
+        audit_logger.log_error(
+            ctx,
+            status="denied",
+            error_type="budget_exceeded",
+            error_message=(
+                f"月度预算已用完"
+                f"（{budget.get('spent')}/{budget.get('budget')}）"
+            ),
+            latency_ms=(
+                time.monotonic() - started
+            ) * 1000,
+        )
+
+        tracer.finish(status="ok")
+
+        return {
+            "response": (
+                "本月 LLM 预算已用完，"
+                "请联系管理员调整预算后再使用。"
+            ),
+            "intent": "",
+            "permission_denied": False,
+            "token_usage": 0,
+            "knowledge_sources": [],
+            "agent": "cost_center",
+            "plan_kind": "",
+            "tools_called": [],
+            "request_id": context.request_id,
+            "conversation_id": context.conversation_id,
+        }
+
+
+    def _record_cost(
+            self,
+            context,
+            result: dict
+    ) -> None:
+
+        """
+        记账本次执行的 LLM 成本（失败静默）
+        """
+
+        tokens = int(
+            result.get("token_usage", 0) or 0
+        )
+
+        if tokens <= 0:
+            return
+
+        cost_service = self._get_cost_service()
+
+        if cost_service is None:
+            return
+
+        try:
+
+            cost_service.record(
+                tenant_id=context.tenant_id,
+                request_id=context.request_id,
+                user_id=context.user_id,
+                model=context.model_name,
+                total_tokens=tokens,
+            )
+
+        except Exception:
+            pass
+
+
+    def _get_cost_service(self):
+
+        try:
+
+            from work_agent.core.container import cost_governance_service
+
+            return cost_governance_service
+
+        except Exception:
+
+            return None
 
 
 # 全局单例

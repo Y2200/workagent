@@ -33,6 +33,7 @@ from work_agent.api.knowledge_intelligence import router as knowledge_intelligen
 from work_agent.api.trace import router as trace_router
 from work_agent.api.config import router as config_router
 from work_agent.api.prompt import router as prompt_router
+from work_agent.api.cost import router as cost_router
 
 
 app = FastAPI(
@@ -59,6 +60,10 @@ app.include_router(
 
 app.include_router(
     prompt_router
+)
+
+app.include_router(
+    cost_router
 )
 
 

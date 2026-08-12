@@ -19,8 +19,9 @@
 - **P5-5-1 Agent Trace**：请求链路追踪（agent_traces/trace_spans + TraceManager + Runtime 五阶段 span + `/api/admin/traces`）
 - **P5-5-2 Agent Configuration Center**：配置中心（agent_configs + config_service + 内置默认 + 租户/平台级覆盖 + 工具停用拦截 + `/api/admin/configs`）
 - **P5-5-3 Prompt Governance**：Prompt 生命周期（prompt_versions + seed 基线 + 草稿/审批/激活/回滚 + PromptManager 治理 resolver + `/api/admin/prompts`）
-- **下一步**：P5-5-4 Cost → P5-5-5 Recovery → P5-5-6 Health → P5-5-7 Suite（见 PROJECT_CONTEXT.md）
-- **测试状态**：24/24 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
+- **P5-5-4 LLM Cost Governance**：成本记账（llm_cost_records）+ 月度预算 + 超限拦截（LLM 前）+ `/api/admin/cost/*`
+- **下一步**：P5-5-5 Recovery → P5-5-6 Health → P5-5-7 Suite（见 PROJECT_CONTEXT.md）
+- **测试状态**：25/25 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 
 ## 架构铁律（不可违反）

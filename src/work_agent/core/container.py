@@ -12,6 +12,7 @@ from work_agent.services.permission_service import PermissionService
 from work_agent.services.trace_service import TraceService
 from work_agent.services.config_service import agent_config_service
 from work_agent.services.prompt_governance_service import prompt_governance_service
+from work_agent.services.cost_governance_service import cost_governance_service
 
 
 rag_service = RAGService()
@@ -61,3 +62,6 @@ agent_config_service = agent_config_service
 # Prompt 治理单例 + 注册 resolver 到 PromptManager
 prompt_governance_service = prompt_governance_service
 prompt_governance_service.register_resolver()
+
+# LLM 成本治理单例
+cost_governance_service = cost_governance_service

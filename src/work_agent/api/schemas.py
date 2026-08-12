@@ -410,6 +410,12 @@ class PromptActivateRequest(BaseModel):
     version: str
 
 
+class BudgetUpdateRequest(BaseModel):
+
+    # 月度预算（元）；null = 不限制
+    budget: float | None = None
+
+
 class PermissionUpdateRequest(BaseModel):
 
     visibility: str = "public"
