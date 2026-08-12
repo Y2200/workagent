@@ -396,6 +396,6 @@ Phase：P6-1
 问题：Milvus 连接地址硬编码 localhost，容器内无法连到 Milvus
 现象：`MilvusClient(uri="http://localhost:19530")`，生产容器中 Milvus 服务名为 milvus-standalone:19530
 原因：连接地址未配置化
-修复：config.py 已加 `milvus_uri`（pydantic-settings 自动读 MILVUS_URI，默认 localhost 兼容开发）；**业务接线（milvus_store.py 改读 settings.milvus_uri）待单独批准后处理**（触及 rag/，属红线审批范围）
-验证：config.py 实证 `MILVUS_URI=milvus-standalone:19530` → settings.milvus_uri 正确覆盖；默认 localhost
+修复：config.py 加 `milvus_uri`（pydantic-settings 自动读 MILVUS_URI，默认 localhost）；`rag/milvus_store.py` 改为 `MilvusClient(uri=settings.milvus_uri)`（已获用户批准，非 RAG 逻辑改动）
+验证：默认 localhost 连接 OK；MILVUS_URI 环境变量覆盖生效；test_milvus/test_permission/test_audit 通过
 ====================

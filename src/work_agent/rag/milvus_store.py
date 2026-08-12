@@ -1,5 +1,7 @@
 from pymilvus import MilvusClient, DataType
 
+from work_agent.config import settings
+
 
 class MilvusVectorStore:
 
@@ -9,8 +11,9 @@ class MilvusVectorStore:
 
     def __init__(self):
 
+        # P6-1：连接地址配置化（默认 localhost 兼容开发，生产经 MILVUS_URI 覆盖）
         self.client = MilvusClient(
-            uri="http://localhost:19530"
+            uri=settings.milvus_uri
         )
 
     def create_collection(self,dimension=384):
