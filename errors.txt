@@ -399,3 +399,43 @@ Phase：P6-1
 修复：config.py 加 `milvus_uri`（pydantic-settings 自动读 MILVUS_URI，默认 localhost）；`rag/milvus_store.py` 改为 `MilvusClient(uri=settings.milvus_uri)`（已获用户批准，非 RAG 逻辑改动）
 验证：默认 localhost 连接 OK；MILVUS_URI 环境变量覆盖生效；test_milvus/test_permission/test_audit 通过
 ====================
+
+====================
+时间：2026-08-13
+Phase：P6-1 部署（服务器排障）
+文件：deploy/scripts/deploy.sh + rollback.sh
+问题：前端构建后 dist 消失，cp 报 No such file or directory
+原因：仓库位于 /opt/work-agent，nginx 根目录即仓库内 frontend/dist；拷贝步骤 rm -rf /opt/work-agent/frontend/dist 删的正是刚构建的源目录（源=目标同一路径）
+修复：删除两脚本中"拷贝 dist"整块（构建产物已在 nginx 根目录，无需拷贝）
+验证：bash -n 通过；服务器重新构建走到 pip 安装阶段
+====================
+
+====================
+时间：2026-08-13
+Phase：P6-1 部署（服务器排障）
+文件：requirements.prod.txt
+问题：Docker build 报 'does not appear to be a Python project: neither setup.py nor pyproject.toml found'
+原因：uv export 默认把项目自身以 '-e .' 写入第16行；Dockerfile 仅 COPY requirements 时 /app 无 pyproject
+修复：uv export --no-emit-project 重新导出，去除 '-e .'
+验证：服务器构建通过该步骤，进入 pip install
+====================
+
+====================
+时间：2026-08-13
+Phase：P6-1 部署（服务器排障）
+文件：requirements.prod.txt
+问题：pip install 下载 nvidia_curand/cusolver 等 CUDA 库数百 MB，构建 18 分钟未完
+原因：uv.lock 从 PyPI 解析出 CUDA 版 torch，export 把 nvidia-*/triton 依赖树写入清单；CPU torch 不需要
+修复：移除 16 个 CUDA-only 依赖（nvidia-*/triton，均带 sys_platform=='linux'），torch 保持 ==2.13.0+cpu
+验证：清单无残留 CUDA 依赖；镜像体积/构建时长大幅下降
+====================
+
+====================
+时间：2026-08-13
+Phase：P6-1 部署（服务器排障）
+文件：deploy/docker-compose.prod.yml
+问题：Milvus 报 'The Access Key Id you provided does not exist in our records'
+原因：milvus-standalone 缺 MinIO 凭据；且环境变量名需按 v2.5.0 实际为准
+修复：增加 MINIO_ACCESS_KEY_ID: ${MILVUS_MINIO_USER} / MINIO_SECRET_ACCESS_KEY: ${MILVUS_MINIO_PASSWORD}；环境变量名经镜像内 /milvus/configs/milvus.yaml 核实
+验证：docker compose config 正确注入；待服务器 up 后验证
+====================

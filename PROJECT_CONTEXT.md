@@ -6,6 +6,28 @@
 
 ---
 
+# ⚡ 当前状态（2026-08-13，P6-1 生产部署进行中）
+
+**代码状态**：本地 `master` 已与 GitHub（`github.com/Y2200/workagent`）同步（HEAD `668569d`），工作区干净。
+**已交付（本地已提交并推送）**：P6-1 生产部署基础设施——`deploy/`（compose/nginx/scripts/README）、`Dockerfile`、`requirements.prod.txt`、`.env.example`、CORS/milvus_uri 配置化。
+**已修复并推送的部署问题**（GitHub 上为云端可用代码）：
+- `fca2356` deploy.sh/rollback.sh 移除自毁 dist 拷贝（仓库即在 nginx 根目录，无需拷贝）
+- `67efad8` requirements.prod.txt 排除项目自身 `-e .`（uv export --no-emit-project）
+- `ba104b6` requirements.prod.txt 移除 16 个 CUDA-only 依赖（nvidia-*/triton）
+- `214ae0b` milvus-standalone 增加 `MINIO_ACCESS_KEY_ID`/`MINIO_SECRET_ACCESS_KEY`（v2.5.0 实测名）
+- `678daab`/`668569d`（用户侧）redis 口令注入 + 忽略部署状态文件
+
+**服务器侧待办（由用户在腾讯云执行，我在本机只提供命令/排障）**：
+1. `cd /opt/work-agent && git pull`（应到 668569d）
+2. `tmux new -s deploy && bash deploy/scripts/deploy.sh`（建议 tmux 防断线）
+3. `docker compose -f deploy/docker-compose.prod.yml --env-file .env ps` → 反馈结果
+4. `certbot --nginx -d wkcp.online -d api.wkcp.online` + `init-prod.sh`（首次）
+5. 健康检查：`curl https://wkcp.online` / `https://api.wkcp.online/health`
+
+**分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB 凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
+
+---
+
 # 一、项目目标
 
 ## 项目名称
