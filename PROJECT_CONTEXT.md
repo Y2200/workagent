@@ -129,7 +129,11 @@ src/work_agent/
 - 页面：/login 登录、/knowledge 知识库管理（上传/列表/检索/详情/删除/状态轮询）、/permission 权限总览、/dashboard 看板、/logs 问答审计
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
-**Phase 5 Enterprise Agent Platform（进行中）**：
+**Phase 5 Enterprise Agent Platform（已完成）**：
+- **P5-5-7 Production Test Suite 已完成**：
+  - `scripts/test_production_suite.py`：一键运行 6 个 P5-5 子套件（trace/config/prompt_governance/llm_cost/failure_recovery/health）+ 生产契约断言（Agent/Tool 不直连 DB、API 分层、Prompt 外置）
+  - 产出 `reports/production_suite_report.json`
+  - **Phase 5 Enterprise Agent Platform 全部完成**：Planner → Multi-Agent → 评测 → 知识智能 → 生产治理（Trace/Config/Prompt/Cost/Recovery/Health/Suite），全量回归 28/28
 - **P5-5-6 Agent Health Monitoring 已完成**：
   - `core/health_metrics.py`：进程内指标（requests/errors/denied/latency/tokens），Runtime 各终态埋点
   - `services/health_service.py`：组件探活（PG/Milvus/MinIO/Redis/配置中心/Prompt），Redis 可选依赖仅警告，就绪判定 = 关键三依赖
@@ -344,6 +348,13 @@ python -m work_agent.scripts.test_multi_agent             # Multi Agent
 python -m work_agent.scripts.test_agent_evaluation        # Agent 评测系统
 python -m work_agent.scripts.run_agent_evaluation         # 运行完整评测（50 案例）
 python -m work_agent.scripts.test_knowledge_intelligence  # P5-4 知识智能（分类/图谱/相似/质量）
+python -m work_agent.scripts.test_agent_trace             # P5-5-1 链路追踪
+python -m work_agent.scripts.test_agent_config            # P5-5-2 配置中心
+python -m work_agent.scripts.test_prompt_governance       # P5-5-3 Prompt 治理
+python -m work_agent.scripts.test_llm_cost                # P5-5-4 成本治理
+python -m work_agent.scripts.test_failure_recovery        # P5-5-5 故障恢复
+python -m work_agent.scripts.test_health_monitoring       # P5-5-6 健康监控
+python -m work_agent.scripts.test_production_suite        # P5-5-7 生产套件（6 子套件 + 契约）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
