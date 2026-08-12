@@ -36,27 +36,23 @@ npm run build
 cd "$REPO_ROOT"
 
 echo ""
-echo "===== 3. 拷贝前端产物 ====="
-$SUDO mkdir -p /opt/work-agent/frontend
-$SUDO rm -rf /opt/work-agent/frontend/dist
-$SUDO cp -r frontend/dist /opt/work-agent/frontend/dist
-
-echo ""
-echo "===== 4. 校验生产 .env ====="
+# 注：nginx 根目录即 /opt/work-agent/frontend/dist（仓库内），
+# npm run build 产物已在目标位置，无需拷贝（旧版拷贝会自删 dist）
+echo "===== 3. 校验生产 .env ====="
 test -f .env || { echo "✗ 缺少 .env，请按 deploy/README.md 创建"; exit 1; }
 echo "✓ .env 存在（已 gitignore，不入库）"
 
 echo ""
-echo "===== 5. 构建并启动后端 ====="
+echo "===== 4. 构建并启动后端 ====="
 docker compose -f deploy/docker-compose.prod.yml --env-file .env build backend
 docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
 
 echo ""
-echo "===== 6. 记录当前部署版本 ====="
+echo "===== 5. 记录当前部署版本 ====="
 git rev-parse HEAD > deploy/.last_deploy
 
 echo ""
-echo "===== 7. 更新 Nginx ====="
+echo "===== 6. 更新 Nginx ====="
 if [ -d /etc/nginx/conf.d ]; then
   $SUDO cp deploy/nginx/wkcp.online.conf /etc/nginx/conf.d/
   $SUDO cp deploy/nginx/api.wkcp.online.conf /etc/nginx/conf.d/
