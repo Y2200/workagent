@@ -130,6 +130,13 @@ src/work_agent/
 - 开发：`cd frontend && npm run dev`（:5173，/api 代理 :8000）
 
 **Phase 5 Enterprise Agent Platform（进行中）**：
+- **P5-5-3 Prompt Governance 已完成**：
+  - `prompt_versions` 表（draft/approved/active/deprecated 状态机，tenant_id="" 平台级）
+  - `services/prompt_governance_service.py`：seed_from_files 基线、create_draft（版本自增）、approve、activate（唯一 active + 清缓存）、deprecate、回滚
+  - PromptManager 治理 resolver：active DB 版本优先，无则回退文件（既有行为不变）
+  - 激活写操作审计 `prompt.activate`
+  - API `api/prompt.py`：GET /prompts、GET /prompts/{name}/history、POST /prompts/{name}/versions、POST /prompts/{name}/activate、POST /prompts/seed
+  - 测试 `scripts/test_prompt_governance.py` 六场景（seed/草稿审批激活/回滚/审计/租户隔离/HTTP），全量回归 24/24
 - **P5-5-2 Agent Configuration Center 已完成**：
   - `agent_configs` 表（tenant_id="" 平台级 / 租户级覆盖，JSON 值）+ `core/config_defs.py` 内置默认注册表
   - `services/config_service.py`：取值优先级 租户→平台→内置默认，内存缓存（set 失效）

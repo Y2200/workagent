@@ -11,6 +11,7 @@ from work_agent.services.dashboard_service import DashboardService
 from work_agent.services.permission_service import PermissionService
 from work_agent.services.trace_service import TraceService
 from work_agent.services.config_service import agent_config_service
+from work_agent.services.prompt_governance_service import prompt_governance_service
 
 
 rag_service = RAGService()
@@ -56,3 +57,7 @@ trace_service = TraceService()
 
 # Agent 配置中心单例（services/config_service.py 内定义）
 agent_config_service = agent_config_service
+
+# Prompt 治理单例 + 注册 resolver 到 PromptManager
+prompt_governance_service = prompt_governance_service
+prompt_governance_service.register_resolver()

@@ -23,6 +23,7 @@ from work_agent.db.models.trace import (
     TraceSpan,
 )
 from work_agent.db.models.agent_config import AgentConfig
+from work_agent.db.models.prompt_version import PromptVersion
 
 
 __all__ = [
@@ -42,5 +43,6 @@ __all__ = [
     "KnowledgeRelation",
     "AgentTrace",
     "TraceSpan",
-    "AgentConfig"
+    "AgentConfig",
+    "PromptVersion"
 ]
