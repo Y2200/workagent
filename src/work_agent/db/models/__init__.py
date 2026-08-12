@@ -24,6 +24,7 @@ from work_agent.db.models.trace import (
 )
 from work_agent.db.models.agent_config import AgentConfig
 from work_agent.db.models.prompt_version import PromptVersion
+from work_agent.db.models.llm_cost import LLMCostRecord
 
 
 __all__ = [
@@ -44,5 +45,6 @@ __all__ = [
     "AgentTrace",
     "TraceSpan",
     "AgentConfig",
-    "PromptVersion"
+    "PromptVersion",
+    "LLMCostRecord"
 ]
