@@ -69,6 +69,52 @@ def _detail_text(task: dict) -> str:
     )
 
 
+def _batch_confirmation_text(result: dict) -> str:
+
+    tasks = result.get("tasks", [])
+
+    progress = result.get("progress", 0)
+
+    lines = [
+        "检测到您准备更新全部任务：",
+    ]
+
+    lines.extend(
+        f"- {t['title']}：{progress}%"
+        for t in tasks
+    )
+
+    lines.append("")
+    lines.append("确认提交吗？（回复「确认」或「取消」）")
+
+    return "\n".join(lines)
+
+
+def _confirmed_text(result: dict) -> str:
+
+    items = result.get("items", [])
+
+    if len(items) == 1:
+
+        item = items[0]
+
+        return (
+            f"已确认：任务「{item['task']['title']}」"
+            f"进度已更新为 {item['progress']}%。"
+        )
+
+    lines = [
+        f"已确认 {len(items)} 个任务：",
+    ]
+
+    lines.extend(
+        f"- {item['task']['title']}：{item['progress']}%"
+        for item in items
+    )
+
+    return "\n".join(lines)
+
+
 def _confirmation_text(task: dict, parsed: dict) -> str:
 
     done = parsed.get("done") or []
@@ -220,19 +266,23 @@ class TaskAgent(BaseAgent):
 
                 return result.get("message", "提交失败")
 
+        # 批量提交 → 待确认
+        if action == "submit_all":
+
+            if result.get("status") == "awaiting_confirmation":
+
+                return _batch_confirmation_text(result)
+
+            if result.get("status") == "no_tasks":
+
+                return result.get("message", "没有进行中的任务")
+
         # 确认
         if action == "confirm":
 
             if result.get("status") == "confirmed":
 
-                parsed = result.get("parsed", {})
-
-                task = result.get("task", {})
-
-                return (
-                    f"已确认：任务「{task.get('title', '')}」"
-                    f"进度已更新为 {parsed.get('progress', 0)}%。"
-                )
+                return _confirmed_text(result)
 
             if result.get("status") == "no_pending":
 
