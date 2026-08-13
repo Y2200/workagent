@@ -18,6 +18,7 @@ PERMISSIONS = [
     ("document:permission_manage", "权限管理", "修改文档访问权限"),
     ("audit:view", "查看审计", "查看问答与操作审计"),
     ("system:manage", "系统管理", "系统级运维操作（归档等）"),
+    ("user:manage", "用户管理", "绑定/解绑企业微信账号"),
 ]
 
 # 角色 → 权限码
@@ -31,6 +32,7 @@ ROLES = {
             "document:permission_manage",
             "audit:view",
             "system:manage",
+            "user:manage",
         ],
     },
     "TENANT_ADMIN": {
@@ -42,6 +44,7 @@ ROLES = {
             "document:permission_manage",
             "audit:view",
             "system:manage",
+            "user:manage",
         ],
     },
     "DEPARTMENT_ADMIN": {

@@ -1,104 +1,24 @@
 """
-企业微信消息发送模块
+企业微信消息发送（兼容门面）
 
-负责：
-1. 获取access_token
-2. 发送应用消息
+统一实现见 wechat/client.py（含 access_token Redis 缓存）。
+本模块保留原接口，避免破坏既有引用。
 """
 
-
-import requests
-
-from work_agent.config import settings
+from work_agent.wechat.client import wecom_client
 
 
+def get_access_token() -> str:
 
-def get_access_token():
-
-    url = (
-        "https://qyapi.weixin.qq.com/"
-        "cgi-bin/gettoken"
-    )
-
-
-    params = {
-
-        "corpid":
-            settings.wechat_corp_id,
-
-        "corpsecret":
-            settings.wechat_secret
-    }
-
-
-    response = requests.get(
-        url,
-        params=params
-    )
-
-
-    data = response.json()
-
-
-    if data.get("errcode") != 0:
-        raise Exception(
-            f"获取access_token失败:{data}"
-        )
-
-
-    return data["access_token"]
-
-
+    return wecom_client.get_access_token()
 
 
 def send_text_message(
-        user_id:str,
-        content:str
-):
+        user_id: str,
+        content: str
+) -> dict:
 
-    token = get_access_token()
-
-
-    url = (
-        "https://qyapi.weixin.qq.com/"
-        "cgi-bin/message/send"
+    return wecom_client.send_text_message(
+        user_id,
+        content,
     )
-
-
-    params = {
-
-        "access_token":
-            token
-    }
-
-
-    body = {
-
-        "touser":
-            user_id,
-
-
-        "msgtype":
-            "text",
-
-
-        "agentid":
-            settings.wechat_agent_id,
-
-
-        "text":
-        {
-            "content":
-                content
-        }
-    }
-
-
-    response = requests.post(
-        url,
-        params=params,
-        json=body
-    )
-
-
-    return response.json()

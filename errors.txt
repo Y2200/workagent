@@ -439,3 +439,34 @@ Phase：P6-1 部署（服务器排障）
 修复：增加 MINIO_ACCESS_KEY_ID: ${MILVUS_MINIO_USER} / MINIO_SECRET_ACCESS_KEY: ${MILVUS_MINIO_PASSWORD}；环境变量名经镜像内 /milvus/configs/milvus.yaml 核实
 验证：docker compose config 正确注入；待服务器 up 后验证
 ====================
+
+====================
+时间：2026-08-13
+Phase：WeCom 接入
+文件：api/users.py
+问题：FastAPI 把未注解的 `request` 参数当作必填查询参数
+现象：/api/admin/users/{id}/wechat 绑定接口启动/调用报缺少查询参数
+原因：bind_wechat 参数 `request` 无类型注解，FastAPI 默认按 query 解析
+修复：加类型注解 `request: Request`
+验证：py_compile 通过；待 Docker 起后跑 test_wecom Part D
+====================
+
+====================
+时间：2026-08-13
+Phase：WeCom 接入
+文件：wechat/verify.py → wechat/crypto.py
+问题：旧 URL 验证直接回显 echostr（假验证，登记债务）
+现象：/wechat/message GET 不验签不校验，任何 echostr 原样返回
+修复：删除 verify.py；手写 WXBizMsgCrypt（crypto.py，官方算法 + pycryptodome）：SHA1 验签 + AES-256-CBC 解密/加密；wechat/__init__.py 导出更新；api/server.py 死代码导入修正
+验证：test_wecom Part A 官方向量通过（验签/往返/防篡改/跨corp/key长度）
+====================
+
+====================
+时间：2026-08-13
+Phase：WeCom 接入
+文件：wechat/auth.py / wechat/sender.py → wechat/client.py
+问题：get_access_token 重复实现（auth.py 不查 errcode），且无 token 缓存
+现象：每条消息都 gettoken，且 auth.py 出错不报
+修复：新增 wechat/client.py 统一 WeComClient（Redis 缓存 token 提前 200s 过期 + 内存兜底、send_text_message、get_user_info）；删除 auth.py；sender.py 改为 client 薄门面保持接口
+验证：import OK；生产需企微「企业可信IP」配置
+====================

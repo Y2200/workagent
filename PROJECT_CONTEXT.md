@@ -6,25 +6,25 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-13，P6-1 生产部署进行中）
+# ⚡ 当前状态（2026-08-13，P6-1 生产已上线 + WeCom 接入实现完成）
 
-**代码状态**：本地 `master` 已与 GitHub（`github.com/Y2200/workagent`）同步（HEAD `668569d`），工作区干净。
-**已交付（本地已提交并推送）**：P6-1 生产部署基础设施——`deploy/`（compose/nginx/scripts/README）、`Dockerfile`、`requirements.prod.txt`、`.env.example`、CORS/milvus_uri 配置化。
-**已修复并推送的部署问题**（GitHub 上为云端可用代码）：
-- `fca2356` deploy.sh/rollback.sh 移除自毁 dist 拷贝（仓库即在 nginx 根目录，无需拷贝）
-- `67efad8` requirements.prod.txt 排除项目自身 `-e .`（uv export --no-emit-project）
-- `ba104b6` requirements.prod.txt 移除 16 个 CUDA-only 依赖（nvidia-*/triton）
-- `214ae0b` milvus-standalone 增加 `MINIO_ACCESS_KEY_ID`/`MINIO_SECRET_ACCESS_KEY`（v2.5.0 实测名）
-- `678daab`/`668569d`（用户侧）redis 口令注入 + 忽略部署状态文件
+**代码状态**：本地 `master` 工作区有未提交改动（WeCom 接入）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API），FastAPI + PostgreSQL + Redis + Milvus + 管理员登录均正常。
 
-**服务器侧待办（由用户在腾讯云执行，我在本机只提供命令/排障）**：
-1. `cd /opt/work-agent && git pull`（应到 668569d）
-2. `tmux new -s deploy && bash deploy/scripts/deploy.sh`（建议 tmux 防断线）
-3. `docker compose -f deploy/docker-compose.prod.yml --env-file .env ps` → 反馈结果
-4. `certbot --nginx -d wkcp.online -d api.wkcp.online` + `init-prod.sh`（首次）
-5. 健康检查：`curl https://wkcp.online` / `https://api.wkcp.online/health`
+**WeCom（企业微信）接入 —— 实现完成，回归待跑**：
+- 回调：`api/wechat.py`（`GET/POST /api/wechat/callback`：SHA1 验签 + AES 解密 + 幂等去重 + 后台任务主动回复）
+- 加解密：`wechat/crypto.py` 手写 WXBizMsgCrypt（pycryptodome）；`wechat/client.py` 统一 WeComClient（Redis 缓存 token）；删除 `verify.py`/`auth.py`，`sender.py` 改薄门面
+- 绑定：`api/users.py`（`GET /api/admin/users`、`PUT/DELETE /{id}/wechat`，`user:manage` 权限）；前端 `Users.vue` 用户绑定页（路由/菜单已加）
+- 自动建号：`WECHAT_AUTO_CREATE_USER`（默认 false）+ `WECHAT_DEFAULT_TENANT_ID`
+- 测试：`scripts/test_wecom.py` —— Part A 加解密/Part B XML/Part C 回调 **已通过**；**Part D 用户绑定 + 全量回归待 Docker 起后跑**
+- 文档：`.env.example`、`deploy/README.md` 第七节（企微接入）
 
-**分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB 凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
+**下一步**：
+1. 启动 Docker（`docker compose up -d`）→ 跑 `test_wecom` 全量 + 全量回归
+2. commit + push WeCom 改动
+3. 服务器侧：`git pull` → `.env` 补 5 个企微变量 → 重跑 `seed_rbac`（user:manage）→ `deploy.sh`
+4. 企微后台配置（用户操作）：自建应用 → 接收消息 URL `https://api.wkcp.online/api/wechat/callback` + Token/EncodingAESKey（安全模式）→ 企业可信IP
+
+**分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 
 ---
 

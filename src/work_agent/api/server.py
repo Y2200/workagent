@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from datetime import datetime
 
 from work_agent.config import settings
-from work_agent.wechat import process_message, verify_signature
+from work_agent.wechat.service import process_message
 
 
 app = FastAPI(

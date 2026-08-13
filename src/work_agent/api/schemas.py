@@ -34,6 +34,49 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class UserAdminOut(BaseModel):
+
+    """
+    用户管理列表项（企微绑定用）
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+
+    username: str
+
+    department: str
+
+    role: str
+
+    tenant_id: str
+
+    wechat_user_id: str | None
+
+    roles: list[str] = []
+
+    created_at: datetime
+
+
+class UserAdminPage(BaseModel):
+
+    items: list[UserAdminOut]
+
+    total: int
+
+
+class WechatBindRequest(BaseModel):
+
+    """
+    绑定企微 userid（空串=解绑）
+    """
+
+    wechat_user_id: str = ""
+
+
 class PermissionOut(BaseModel):
 
     model_config = ConfigDict(

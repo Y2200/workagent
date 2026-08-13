@@ -28,11 +28,32 @@ def parse_wechat_xml(
         ""
     )
 
+    msg_type = root.findtext(
+        "MsgType",
+        ""
+    )
+
+    msg_id = root.findtext(
+        "MsgId",
+        ""
+    )
+
+    create_time = root.findtext(
+        "CreateTime",
+        ""
+    )
+
 
     return {
 
         "user": user,
 
-        "content": content
+        "content": content,
+
+        "msg_type": msg_type,
+
+        "msg_id": msg_id,
+
+        "create_time": create_time,
 
     }
