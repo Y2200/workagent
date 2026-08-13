@@ -107,9 +107,13 @@ class TaskService:
     def get_task(
             self,
             *,
-            tenant_id: str,
+            tenant_id: str | None,
             task_id: int
     ):
+
+        """
+        tenant_id=None 表示平台管理员，跳过租户校验
+        """
 
         db = SessionLocal()
 
@@ -120,7 +124,11 @@ class TaskService:
                 task_id,
             )
 
-            if task and task.tenant_id != tenant_id:
+            if (
+                task
+                and tenant_id
+                and task.tenant_id != tenant_id
+            ):
 
                 raise TenantAccessDenied(
                     "跨租户访问任务"
@@ -135,7 +143,7 @@ class TaskService:
     def list_tasks_for_web(
             self,
             *,
-            tenant_id: str,
+            tenant_id: str | None = None,
             status: str | None = None
     ):
 
