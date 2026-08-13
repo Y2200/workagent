@@ -16,7 +16,10 @@ from work_agent.api.schemas import (
     TaskOut,
     TaskUpdateOut,
 )
-from work_agent.core.container import task_service
+from work_agent.core.container import (
+    notification_service,
+    task_service,
+)
 from work_agent.db.models import User
 from work_agent.repositories.user_repository import UserRepository
 from work_agent.services.audit_service import AuditService
@@ -233,6 +236,9 @@ def create_task(
             "user-agent"
         ),
     )
+
+    # 发布任务企微提醒（失败不影响任务创建——内部吞异常 + 落库 failed）
+    notification_service.send_task_created(task)
 
     return _enrich(
         db,

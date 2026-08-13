@@ -992,6 +992,130 @@ def test_notifications():
     print("Part 10 ✅ 任务通知记录（落库/发送成功/失败不影响主流程）")
 
 
+# ======================
+# Part 11 Web 发布任务企微提醒（send_task_created）
+# ======================
+
+def test_task_created_notification():
+
+    from work_agent.db.models.task import TaskNotification
+
+    from work_agent.services.notification_service import (
+        notification_service,
+    )
+
+    import work_agent.wechat.client as wc
+
+    class FakeClient:
+
+        def send_text_message(
+                self,
+                user_id,
+                content,
+        ):
+
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+            }
+
+    wc.wecom_client = FakeClient()
+
+    emp = _user("A财务员工")
+
+    task = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="发布提醒测试",
+        description="完成接口开发",
+        employee_id=emp.id,
+        department="财务部",
+        priority="high",
+    )
+
+    # ① 发送成功，模板含关键字段
+    result = notification_service.send_task_created(task)
+
+    assert result["ok"] is True, result
+
+    db = SessionLocal()
+
+    rows = (
+        db.query(TaskNotification)
+        .filter(TaskNotification.task_id == task.id)
+        .all()
+    )
+
+    db.close()
+
+    assert rows, "应产生通知记录"
+
+    content = rows[0].content
+
+    assert "您有一个新任务" in content, content
+
+    assert "任务名称：发布提醒测试" in content, content
+
+    assert "任务描述：完成接口开发" in content, content
+
+    assert "优先级：high" in content, content
+
+    assert rows[0].status == "sent", rows[0].status
+
+    # ② 员工未绑定企微 → 通知 failed，不影响任务创建
+    from work_agent.repositories.user_repository import UserRepository
+
+    from work_agent.services.auth_service import AuthService
+
+    unbound_id = None
+
+    db = SessionLocal()
+
+    unbound = UserRepository().create(
+        db,
+        username="通知测试员工",
+        password_hash=AuthService.hash_password("test123"),
+        department="财务部",
+        role="员工",
+        tenant_id=emp.tenant_id,
+    )
+
+    unbound_id = unbound.id
+
+    db.close()
+
+    task2 = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="未绑定通知",
+        employee_id=unbound_id,
+    )
+
+    result2 = notification_service.send_task_created(task2)
+
+    assert result2["ok"] is False, result2
+
+    assert result2["status"] == "failed", result2
+
+    # 清理测试用户
+    from work_agent.db.models import User
+
+    db = SessionLocal()
+
+    user = UserRepository().get_by_id(
+        db,
+        unbound_id,
+    )
+
+    if user:
+
+        db.delete(user)
+
+        db.commit()
+
+    db.close()
+
+    print("Part 11 ✅ Web 发布任务企微提醒（模板/成功/未绑定→failed）")
+
+
 def test():
 
     _setup()
@@ -1015,6 +1139,8 @@ def test():
     test_batch_submit()
 
     test_notifications()
+
+    test_task_created_notification()
 
 
 if __name__ == "__main__":

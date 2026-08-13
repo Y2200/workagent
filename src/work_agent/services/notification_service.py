@@ -123,6 +123,92 @@ class NotificationService:
             "detail": detail,
         }
 
+    def send_task_created(
+            self,
+            task
+    ) -> dict:
+
+        """
+        任务创建后通知负责人（企微主动推送）
+
+        失败不影响任务创建（内部吞异常 + 落库 failed）
+        """
+
+        from work_agent.repositories.user_repository import UserRepository
+
+        db = SessionLocal()
+
+        try:
+
+            employee = UserRepository().get_by_id(
+                db,
+                task.employee_id,
+            )
+
+            content = self._task_created_text(task)
+
+            if not employee or not employee.wechat_user_id:
+
+                self.record(
+                    tenant_id=task.tenant_id,
+                    task_id=task.id,
+                    receiver_id=task.employee_id,
+                    channel="wechat",
+                    content=content,
+                    status="failed",
+                )
+
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "detail": "员工未绑定企微",
+                }
+
+            return self.send_wechat(
+                tenant_id=task.tenant_id,
+                task_id=task.id,
+                receiver_id=task.employee_id,
+                wechat_user_id=employee.wechat_user_id,
+                content=content,
+            )
+
+        finally:
+
+            db.close()
+
+    @staticmethod
+    def _task_created_text(
+            task
+    ) -> str:
+
+        lines = [
+            "您有一个新任务：",
+            "",
+            f"任务名称：{task.title}",
+        ]
+
+        if task.description:
+
+            lines.append(
+                f"任务描述：{task.description}"
+            )
+
+        if task.deadline:
+
+            lines.append(
+                "截止时间："
+                + task.deadline.strftime("%Y-%m-%d %H:%M")
+            )
+
+        lines.append(
+            f"优先级：{task.priority}"
+        )
+
+        lines.append("")
+        lines.append("请及时处理。回复「我的任务」查看")
+
+        return "\n".join(lines)
+
 
 # 全局单例
 notification_service = NotificationService()
