@@ -33,6 +33,7 @@ class TaskTool(BaseTool):
         "list": "task:view",
         "detail": "task:view",
         "submit": "task:view",
+        "submit_all": "task:view",
         "complete": "task:view",
         "confirm": "task:view",
         "cancel": "task:view",
@@ -168,6 +169,15 @@ class TaskTool(BaseTool):
             )
 
             return result
+
+        # 批量提交全部未完成任务
+        if action == "submit_all":
+
+            return task_service.submit_all_progress(
+                tenant_id=context.tenant_id,
+                employee_id=context.user_id,
+                content=content or query,
+            )
 
         # 确认 / 取消
         if action == "confirm":

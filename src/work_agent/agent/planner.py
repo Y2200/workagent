@@ -207,6 +207,14 @@ class AgentPlanner:
                 # LLM 未给出 action 时从消息推断（确定性兜底）
                 action = _infer_task_action(message)
 
+            # 批量语义确定性强覆盖（LLM 可能返回 submit）
+            if (
+                "全部任务" in message
+                or "所有任务" in message
+            ):
+
+                action = "submit_all"
+
             return PlanResult(
                 kind="task",
                 intent=intent,

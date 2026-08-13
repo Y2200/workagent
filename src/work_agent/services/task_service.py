@@ -499,6 +499,80 @@ class TaskService:
 
             db.close()
 
+    def submit_all_progress(
+            self,
+            *,
+            tenant_id: str,
+            employee_id: int,
+            content: str
+    ) -> dict:
+
+        """
+        批量提交：给员工全部未完成任务创建待确认（同一进度）
+
+        返回：
+        {"status": "awaiting_confirmation", "progress": N, "tasks": [...], "summary": "..."}
+        或 {"status": "no_tasks", "message": "..."}
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            tasks = self.repository.get_employee_active_tasks(
+                db,
+                tenant_id,
+                employee_id,
+            )
+
+            if not tasks:
+
+                return {
+                    "status": "no_tasks",
+                    "message": "你目前没有进行中的任务。",
+                }
+
+            progress = self._extract_progress(content)
+
+            summary = "批量进度更新"
+
+            items = []
+
+            for task in tasks:
+
+                parsed = {
+                    "progress": progress,
+                    "summary": summary,
+                    "done": [],
+                    "remaining": [],
+                }
+
+                self.repository.upsert_pending(
+                    db,
+                    task_id=task.id,
+                    employee_id=employee_id,
+                    content=content,
+                    parsed=parsed,
+                )
+
+                items.append(
+                    {
+                        "id": task.id,
+                        "title": task.title,
+                    }
+                )
+
+            return {
+                "status": "awaiting_confirmation",
+                "progress": progress,
+                "summary": summary,
+                "tasks": items,
+            }
+
+        finally:
+
+            db.close()
+
     def confirm_pending(
             self,
             *,
@@ -507,10 +581,12 @@ class TaskService:
     ) -> dict:
 
         """
-        员工确认：pending → task_updates + tasks.progress
+        员工确认：全部待确认 pending → task_updates + tasks.progress
+
+        支持单个与批量（批量 = 员工有多条 pending）
 
         返回：
-        {"status": "confirmed", "task": {...}, "parsed": {...}}
+        {"status": "confirmed", "count": N, "items": [{task, progress, summary}...]}
         或 {"status": "no_pending", "message": "..."}
         """
 
@@ -518,56 +594,68 @@ class TaskService:
 
         try:
 
-            pending, task = self.repository.get_latest_pending(
+            rows = self.repository.list_pendings(
                 db,
                 tenant_id,
                 employee_id,
             )
 
-            if not pending or not task:
+            if not rows:
 
                 return {
                     "status": "no_pending",
                     "message": "当前没有待确认的提交。",
                 }
 
-            parsed = pending.parsed or {}
+            items = []
 
-            progress = int(
-                parsed.get("progress", task.progress)
-            )
+            for pending, task in rows:
 
-            summary = (
-                parsed.get("summary", "")
-                or pending.content
-            )
+                parsed = pending.parsed or {}
 
-            self.repository.add_update(
-                db,
-                task_id=task.id,
-                employee_id=employee_id,
-                content=pending.content,
-                progress=progress,
-                ai_summary=summary,
-                confirmed=True,
-            )
+                progress = int(
+                    parsed.get("progress", task.progress)
+                )
 
-            self.repository.update_progress(
-                db,
-                task.id,
-                progress,
-            )
+                summary = (
+                    parsed.get("summary", "")
+                    or pending.content
+                )
 
-            self.repository.clear_pending(
-                db,
-                task.id,
-                employee_id,
-            )
+                self.repository.add_update(
+                    db,
+                    task_id=task.id,
+                    employee_id=employee_id,
+                    content=pending.content,
+                    progress=progress,
+                    ai_summary=summary,
+                    confirmed=True,
+                )
+
+                self.repository.update_progress(
+                    db,
+                    task.id,
+                    progress,
+                )
+
+                self.repository.clear_pending(
+                    db,
+                    task.id,
+                    employee_id,
+                )
+
+                items.append(
+                    {
+                        "task": self._task_dict(task),
+                        "progress": progress,
+                        "summary": summary,
+                    }
+                )
 
             return {
                 "status": "confirmed",
-                "task": self._task_dict(task),
-                "parsed": parsed,
+                "count": len(items),
+                "items": items,
             }
 
         finally:

@@ -121,6 +121,28 @@ class TaskRepository:
             .all()
         )
 
+    def get_employee_active_tasks(
+            self,
+            db: Session,
+            tenant_id: str,
+            employee_id: int
+    ) -> list[Task]:
+
+        """
+        员工未完成任务（pending/processing），批量提交用
+        """
+
+        return (
+            db.query(Task)
+            .filter(
+                Task.tenant_id == tenant_id,
+                Task.employee_id == employee_id,
+                Task.status.in_(["pending", "processing"]),
+            )
+            .order_by(Task.deadline.asc(), Task.id.asc())
+            .all()
+        )
+
     def update_progress(
             self,
             db: Session,
@@ -281,6 +303,31 @@ class TaskRepository:
             return None, None
 
         return row[0], row[1]
+
+    def list_pendings(
+            self,
+            db: Session,
+            tenant_id: str,
+            employee_id: int
+    ) -> list[tuple[TaskPendingUpdate, Task]]:
+
+        """
+        员工全部待确认提交（join 任务，批量确认用）
+        """
+
+        return (
+            db.query(TaskPendingUpdate, Task)
+            .join(
+                Task,
+                Task.id == TaskPendingUpdate.task_id,
+            )
+            .filter(
+                Task.tenant_id == tenant_id,
+                TaskPendingUpdate.employee_id == employee_id,
+            )
+            .order_by(TaskPendingUpdate.id.asc())
+            .all()
+        )
 
     def upsert_pending(
             self,

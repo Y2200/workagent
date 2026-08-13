@@ -763,6 +763,122 @@ def test_parse_optimization():
     print("Part 8 ✅ 提交解析优化（提交=指令，任务名≠summary）")
 
 
+# ======================
+# Part 9 批量任务进度提交（submit_all → 批量确认）
+# ======================
+
+def test_batch_submit():
+
+    # 隔离：清理此前 Part 累积的任务，保证 submit_all 只针对本 Part 的任务
+    _cleanup_test_tasks()
+
+    emp = _user("A财务员工")
+
+    t1 = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="批量任务甲",
+        employee_id=emp.id,
+        department="财务部",
+    )
+
+    t2 = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="批量任务乙",
+        employee_id=emp.id,
+        department="财务部",
+    )
+
+    context = AgentContext.build(
+        user=emp,
+        channel="wechat",
+        permissions=_permissions(emp),
+    )
+
+    # ① 路由 → submit_all
+    intent = IntentRouter().route(
+        "提交我的所有任务完成20%",
+        user_context=context.to_user_context(),
+        tenant_context={"tenant_id": context.tenant_id},
+    )
+
+    plan = agent_planner.plan(
+        message="提交我的所有任务完成20%",
+        intent_result=intent,
+        context=context,
+    )
+
+    assert plan.kind == "task", plan.kind
+
+    assert plan.steps[0].action == "submit_all", plan.steps[0].action
+
+    # ② TaskAgent 批量预览
+    agent = TaskAgent()
+
+    result = agent.run(
+        context=context,
+        plan=plan,
+        message="提交我的所有任务完成20%",
+    )
+
+    assert "检测到您准备更新全部任务" in result.response, result.response
+
+    assert "批量任务甲：20%" in result.response, result.response
+
+    assert "批量任务乙：20%" in result.response, result.response
+
+    # ③ 确认 → 批量更新两个任务
+    intent = IntentRouter().route(
+        "确认",
+        user_context=context.to_user_context(),
+        tenant_context={"tenant_id": context.tenant_id},
+    )
+
+    plan = agent_planner.plan(
+        message="确认",
+        intent_result=intent,
+        context=context,
+    )
+
+    result = agent.run(
+        context=context,
+        plan=plan,
+        message="确认",
+    )
+
+    assert "已确认 2 个任务" in result.response, result.response
+
+    updated1 = task_service.get_task(
+        tenant_id=emp.tenant_id,
+        task_id=t1.id,
+    )
+
+    updated2 = task_service.get_task(
+        tenant_id=emp.tenant_id,
+        task_id=t2.id,
+    )
+
+    assert updated1.progress == 20, updated1.progress
+
+    assert updated2.progress == 20, updated2.progress
+
+    # ④ 提交记录落库
+    updates1 = task_service.list_task_updates(
+        tenant_id=emp.tenant_id,
+        task_id=t1.id,
+    )
+
+    updates2 = task_service.list_task_updates(
+        tenant_id=emp.tenant_id,
+        task_id=t2.id,
+    )
+
+    assert len(updates1) == 1, updates1
+
+    assert len(updates2) == 1, updates2
+
+    print("Part 9 ✅ 批量任务提交（submit_all→批量预览→确认批量更新）")
+
+
 def test():
 
     _setup()
@@ -782,6 +898,8 @@ def test():
     test_task_context_routing()
 
     test_parse_optimization()
+
+    test_batch_submit()
 
 
 if __name__ == "__main__":
