@@ -521,3 +521,32 @@ Phase：任务督导
 验证：test_task_agent Part 5 租户继承 + 空租户 IntegrityError 拦截；生产需重跑 migrate_tasks（回填历史空租户任务）
 教训：多租户数据继承统一原则——tenant_id 永远来自数据所有者（负责人/员工），不来自创建者，更不来自前端
 ====================
+
+====================
+时间：2026-08-13
+Phase：任务督导第二轮
+文件：agent/router/intent_router.py + services/task_service.py
+问题：员工直接说任务名（如"开发"）被误路由进 risk_agent
+原因：IntentRouter 未利用任务上下文，短任务名按常规 LLM 路由
+修复：任务上下文优先——短消息(≤16字符、不含提交/完成/确认等动作词)按任务名匹配（归一化精确→embedding相似≥0.75），命中直接 TASK_MANAGEMENT/detail；不用简单 contains
+验证：test_task_agent Part 7
+====================
+
+====================
+时间：2026-08-13
+Phase：任务督导第二轮
+文件：prompts/task_progress_parse.txt
+问题："提交XX任务完成30%" 把任务名当 summary
+原因：prompt 未区分「提交=操作指令/任务名=task_title/完成X%=进度」
+修复：prompt 明确规则，无具体内容 summary="未提供具体完成内容"；_fallback_parse 只剥开头「完成X%」框架保留后续内容；submit 后清理 guard 剥 task_title
+验证：test_task_agent Part 8
+====================
+
+====================
+时间：2026-08-13
+Phase：任务督导第二轮
+文件：services/notification_service.py + db/models/task.py
+问题：Web 发布任务后员工需主动查，无主动提醒
+修复：task_notifications 表 + NotificationService.send_task_created（企微主动推送，失败落库 failed 不影响任务创建）
+验证：test_task_agent Part 10/11
+====================

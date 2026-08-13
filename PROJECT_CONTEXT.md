@@ -6,7 +6,7 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-13，WeCom 已上线 + 任务督导 MVP 完成）
+# ⚡ 当前状态（2026-08-13，任务督导第二轮优化完成）
 
 **代码状态**：本地 `master` 工作区有未提交改动（任务督导模块）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
 
@@ -19,6 +19,14 @@
 - Web：`api/tasks.py`（列表/创建/详情/负责人下拉 `task/employees`）+ 前端 `Tasks.vue`（创建/列表/详情/提交记录）
 - 权限：`task:view`/`task:create`/`task:manage` 加入 seed_rbac
 - 测试：`scripts/test_task_agent.py` 四部分（服务层/意图规划/Agent端到端/越权隔离）
+
+**任务督导第二轮优化 —— 完成（5 Phase 全绿，test_task_agent 11 部分）**：
+- Phase1 任务上下文路由：短任务名直接进任务Agent（归一化精确→embedding相似，不用 contains；含动作词短句不误判）；新 action=detail
+- Phase2 提交解析优化：提交=操作指令/任务名≠summary/无内容="未提供具体完成内容"
+- Phase3 批量提交：submit_all（全部未完成任务→批量预览→确认批量更新）
+- Phase4 Web 发布任务企微提醒：NotificationService.send_task_created（失败不影响任务创建）
+- Phase5 通知记录表：task_notifications（pending/sent/failed，含 sent_at）
+
 - 未做（后续）：自动提醒/风险（APScheduler）、Excel/Word/邮件、周报
 
 **下一步**：
