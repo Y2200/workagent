@@ -15,6 +15,7 @@ from sqlalchemy import text
 from work_agent.db.base import Base
 from work_agent.db.models.task import (
     Task,
+    TaskNotification,
     TaskPendingUpdate,
     TaskUpdate,
 )
@@ -30,6 +31,7 @@ def migrate():
             Task.__table__,
             TaskUpdate.__table__,
             TaskPendingUpdate.__table__,
+            TaskNotification.__table__,
         ],
     )
 
@@ -99,7 +101,10 @@ def migrate():
                 "请人工处理后再重跑本脚本以添加 CHECK 约束"
             )
 
-    print("迁移完成：tasks / task_updates / task_pending_updates 已就绪")
+    print(
+        "迁移完成：tasks / task_updates / task_pending_updates / "
+        "task_notifications 已就绪"
+    )
 
 
 if __name__ == "__main__":
