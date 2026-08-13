@@ -6,34 +6,29 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-13，任务督导第二轮优化完成）
+# ⚡ 当前状态（2026-08-13，WeCom 上线 + 任务督导 MVP+二轮优化 全部完成）
 
-**代码状态**：本地 `master` 工作区有未提交改动（任务督导模块）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
+**代码状态**：本地 `master` = 远程 `origin/master` = `ec4b360`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
 
-**任务督导（AI Task Supervisor）MVP —— 完成，回归全绿 31/31**：
-- 模型：`tasks`/`task_updates`/`task_pending_updates` 三表（`db/models/task.py` + `scripts/migrate_tasks.py`）
-- 服务：`repositories/task_repository.py` + `services/task_service.py`（创建/查询/提交/确认/取消，AI 解析 `task_progress_parse` prompt + 确定性回退）
-- Agent：`agent/agents/task_agent.py` + `agent/tools/task_tool.py`（list/submit/confirm/cancel/complete）；新意图 `task_management`
-- 接入：intent_router prompt/规则、planner（kind=task + 任务消息归一化）、agent_registry/tool_registry 注册
-- **AI 确认机制**：员工提交 → AI 解析进度/摘要 → 写 pending（不落正式表）→ 回复「确认提交吗？」→ 员工回「确认」→ 落 task_updates + 更新 tasks.progress（完成=100）
-- Web：`api/tasks.py`（列表/创建/详情/负责人下拉 `task/employees`）+ 前端 `Tasks.vue`（创建/列表/详情/提交记录）
-- 权限：`task:view`/`task:create`/`task:manage` 加入 seed_rbac
-- 测试：`scripts/test_task_agent.py` 四部分（服务层/意图规划/Agent端到端/越权隔离）
+## 已上线（生产服务器已部署）
+- 企微接入：回调 `api/wechat.py` + 手写 WXBizMsgCrypt（`wechat/crypto.py`）+ 统一 WeComClient（Redis token 缓存）+ 用户绑定 `api/users.py`/`Users.vue`
+- Milvus 租户元数据修复（`repair_milvus_metadata.py` + `update_document_metadata`）
+- 任务督导 MVP + 二轮优化（见下）
 
-**任务督导第二轮优化 —— 完成（5 Phase 全绿，test_task_agent 11 部分）**：
-- Phase1 任务上下文路由：短任务名直接进任务Agent（归一化精确→embedding相似，不用 contains；含动作词短句不误判）；新 action=detail
-- Phase2 提交解析优化：提交=操作指令/任务名≠summary/无内容="未提供具体完成内容"
-- Phase3 批量提交：submit_all（全部未完成任务→批量预览→确认批量更新）
-- Phase4 Web 发布任务企微提醒：NotificationService.send_task_created（失败不影响任务创建）
-- Phase5 通知记录表：task_notifications（pending/sent/failed，含 sent_at）
+## 任务督导（已完成，全量回归绿）
+- **模型**：`tasks`/`task_updates`/`task_pending_updates`/`task_notifications` 四表（`db/models/task.py` + `scripts/migrate_tasks.py`）
+- **服务**：`task_service` + `task_repository` + `notification_service`（创建/查询/提交/确认/取消/批量/通知）
+- **Agent**：`task_agent` + `task_tool`（list/detail/submit/submit_all/confirm/cancel/complete）；新意图 `task_management`
+- **AI 确认机制**：提交 → AI 解析 → 写 pending（不落正式表）→「确认提交吗？」→ 回「确认」→ 落 task_updates + 更新 progress
+- **二轮优化**：①任务上下文路由（短任务名→detail，embedding 相似，不用 contains）②提交解析优化（提交≠summary）③批量提交 submit_all ④Web 发布企微提醒 `send_task_created`（失败不影响建任务）⑤task_notifications 通知记录表
+- **Web**：`api/tasks.py` + `Tasks.vue`；权限 `task:view/create/manage`（seed_rbac）
+- **多租户原则**：task.tenant_id 归属负责人 employee；SUPER_ADMIN 全量/租户管理员隔离
+- 测试：`scripts/test_task_agent.py` 11 部分；生产套件 6/6+契约
 
-- 未做（后续）：自动提醒/风险（APScheduler）、Excel/Word/邮件、周报
-
-**下一步**：
-1. commit + push 任务督导改动
-2. 服务器侧：`git pull` → `migrate_tasks`（建表）→ `seed_rbac`（task 权限）→ `deploy.sh`（重建镜像）
-3. Web 登录 `https://wkcp.online` → 「任务管理」创建任务 → 员工企微「我的任务」可见
-4. 后续：APScheduler 自动督办、任务统计/周报/邮件（6-2.txt Phase 3/4）
+## 下一步
+1. **部署二轮优化到服务器**：`git pull` → `deploy.sh` → `migrate_tasks`（建 task_notifications 表，幂等）
+2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名
+3. 后续（未做）：APScheduler 自动督办提醒、任务统计/周报/邮件（6-2.txt Phase 3/4）、前端治理看板接入
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 
