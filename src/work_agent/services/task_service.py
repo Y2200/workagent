@@ -18,6 +18,7 @@ from datetime import datetime
 from work_agent.core.exceptions import TenantAccessDenied
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.task_repository import TaskRepository
+from work_agent.repositories.user_repository import UserRepository
 
 
 _PROGRESS_RE = re.compile(
@@ -41,7 +42,7 @@ class TaskService:
     def create_task(
             self,
             *,
-            tenant_id: str,
+            creator_tenant_id: str,
             title: str,
             description: str = "",
             creator_id: int | None = None,
@@ -52,13 +53,43 @@ class TaskService:
             priority: str = "normal"
     ):
 
+        """
+        创建任务
+
+        多租户铁律：任务 tenant_id 归属「数据所有者」= 负责人 employee 的租户，
+        （创建者可能是平台管理员，其 tenant_id 为空，不能作为任务租户）。
+        前端禁止传 tenant_id；两者皆空则拒绝创建。
+        """
+
         db = SessionLocal()
 
         try:
 
+            employee = UserRepository().get_by_id(
+                db,
+                employee_id,
+            )
+
+            if not employee:
+
+                raise ValueError(
+                    f"负责人不存在: {employee_id}"
+                )
+
+            task_tenant = (
+                employee.tenant_id
+                or creator_tenant_id
+            )
+
+            if not task_tenant:
+
+                raise ValueError(
+                    "无法确定任务租户：负责人与创建者均无租户"
+                )
+
             return self.repository.create(
                 db,
-                tenant_id=tenant_id,
+                tenant_id=task_tenant,
                 title=title,
                 description=description,
                 creator_id=creator_id,

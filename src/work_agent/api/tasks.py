@@ -177,17 +177,26 @@ def create_task(
             detail="priority 仅支持 low/normal/high"
         )
 
-    task = task_service.create_task(
-        tenant_id=current_user.tenant_id,
-        title=payload.title.strip(),
-        description=payload.description,
-        creator_id=current_user.id,
-        manager_id=payload.manager_id,
-        employee_id=payload.employee_id,
-        department=payload.department,
-        deadline=payload.deadline,
-        priority=payload.priority,
-    )
+    try:
+
+        task = task_service.create_task(
+            creator_tenant_id=current_user.tenant_id,
+            title=payload.title.strip(),
+            description=payload.description,
+            creator_id=current_user.id,
+            manager_id=payload.manager_id,
+            employee_id=payload.employee_id,
+            department=payload.department,
+            deadline=payload.deadline,
+            priority=payload.priority,
+        )
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
     AuditService().log_operation(
         tenant_id=current_user.tenant_id,

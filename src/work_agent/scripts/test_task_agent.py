@@ -136,7 +136,7 @@ def test_service():
     assert emp, "需要 A财务员工 测试用户"
 
     task = task_service.create_task(
-        tenant_id=emp.tenant_id,
+        creator_tenant_id=emp.tenant_id,
         title="财务模块开发",
         description="完成报销接口与审批流程",
         creator_id=emp.id,
@@ -466,6 +466,64 @@ def test_isolation():
     print("Part 4 ✅ 越权隔离（跨租户待确认不可见）")
 
 
+# ======================
+# Part 5 租户继承（创建任务 tenant_id 归属负责人）
+# ======================
+
+def test_tenant_inheritance():
+
+    admin = _user("admin")
+
+    emp_a = _user("A财务员工")
+
+    assert admin, "需要 admin 测试用户"
+
+    # 平台管理员（tenant=''）给租户1员工建任务 → 任务 tenant 应为 '1'
+    task = task_service.create_task(
+        creator_tenant_id=admin.tenant_id,
+        title="租户继承测试任务",
+        creator_id=admin.id,
+        employee_id=emp_a.id,
+        department="财务部",
+    )
+
+    assert task.tenant_id == emp_a.tenant_id == "1", task.tenant_id
+
+    # 员工企微「我的任务」按自己租户能查到
+    tasks = task_service.list_employee_tasks(
+        tenant_id=emp_a.tenant_id,
+        employee_id=emp_a.id,
+    )
+
+    assert any(
+        t.id == task.id
+        for t in tasks
+    )
+
+    # 负例：负责人与创建者均无租户 → 拒绝创建
+    platform_user = _user("员工A")
+
+    if platform_user and not platform_user.tenant_id:
+
+        try:
+
+            task_service.create_task(
+                creator_tenant_id="",
+                title="不应创建成功",
+                employee_id=platform_user.id,
+            )
+
+            raise AssertionError(
+                "负责人/创建者均无租户时应拒绝创建"
+            )
+
+        except ValueError:
+
+            pass
+
+    print("Part 5 ✅ 租户继承（任务 tenant 归属负责人，空租户拒绝）")
+
+
 def test():
 
     _setup()
@@ -477,6 +535,8 @@ def test():
     test_agent(task)
 
     test_isolation()
+
+    test_tenant_inheritance()
 
 
 if __name__ == "__main__":
