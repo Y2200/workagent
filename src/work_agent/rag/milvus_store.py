@@ -594,3 +594,96 @@ class MilvusVectorStore:
             )
 
         return len(data)
+
+
+    def update_document_metadata(
+            self,
+            document_id: int,
+            tenant_id: str,
+            access: dict
+    ) -> int:
+
+        """
+        同步文档 chunk 的 metadata（tenant_id + access）回 Milvus
+
+        用于修复：Postgres 侧 tenant/权限变更后，Milvus metadata 仍为旧值
+        （如 Phase 1 入库的向量 tenant_id 为空 → 租户过滤全灭）
+        """
+
+        result = self.client.query(
+            collection_name=self.COLLECTION_NAME,
+            filter=f"document_id == {document_id}",
+            output_fields=[
+                "id",
+                "vector",
+                "text",
+                "source",
+                "category",
+                "metadata"
+            ],
+            limit=16384,
+            consistency_level="Strong"
+        )
+
+        data = []
+
+        for row in result:
+
+            metadata = dict(
+                row.get(
+                    "metadata",
+                    {}
+                )
+                or {}
+            )
+
+            metadata["tenant_id"] = tenant_id
+
+            metadata["access"] = access
+
+            data.append(
+                {
+                    "id":
+                        row["id"],
+
+                    "vector":
+                        row["vector"],
+
+                    "text":
+                        row.get(
+                            "text",
+                            ""
+                        ),
+
+                    "source":
+                        row.get(
+                            "source",
+                            ""
+                        ),
+
+                    "category":
+                        row.get(
+                            "category",
+                            ""
+                        ),
+
+                    "metadata":
+                        metadata,
+
+                    "document_id":
+                        document_id
+                }
+            )
+
+        if data:
+
+            self.client.upsert(
+                collection_name=self.COLLECTION_NAME,
+                data=data
+            )
+
+            self.client.flush(
+                self.COLLECTION_NAME
+            )
+
+        return len(data)
