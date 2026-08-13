@@ -43,9 +43,10 @@ class Task(Base):
         autoincrement=True
     )
 
+    # 多租户铁律：tenant_id 必填且不允许空字符串（归属数据所有者=负责人租户）
     tenant_id: Mapped[str] = mapped_column(
         String(64),
-        default="",
+        nullable=False,
         index=True
     )
 
