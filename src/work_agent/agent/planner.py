@@ -84,6 +84,18 @@ class AgentPlanner:
         intent = intent_result.intent
 
         # ======================
+        # 任务状态/进度消息统一归 task
+        # （LLM 可能在 workflow_request / task_management 间摇摆，此处确定性归一）
+        # ======================
+
+        if (
+            intent == IntentType.WORKFLOW_REQUEST
+            and ("任务" in message or "进度" in message)
+        ):
+
+            intent = IntentType.TASK_MANAGEMENT
+
+        # ======================
         # 确定性路径
         # ======================
 
@@ -175,6 +187,38 @@ class AgentPlanner:
                 reasoning="风险分析：检索制度并评估风险",
             )
 
+        if intent == IntentType.TASK_MANAGEMENT:
+
+            action = (
+                intent_result.entities.get("action")
+                or ""
+            )
+
+            if action not in (
+                "list",
+                "submit",
+                "confirm",
+                "cancel",
+                "complete",
+            ):
+
+                # LLM 未给出 action 时从消息推断（确定性兜底）
+                action = _infer_task_action(message)
+
+            return PlanResult(
+                kind="task",
+                intent=intent,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="task_tool",
+                        action=action,
+                        description="任务督导",
+                    ),
+                ],
+                reasoning=f"任务督导：执行 {action}",
+            )
+
         # 其他（督导/闲聊/未知）
         return PlanResult(
             kind="legacy",
@@ -257,6 +301,35 @@ class AgentPlanner:
             intent_result=intent_result,
             context=context,
         )
+
+
+def _infer_task_action(
+        message: str
+) -> str:
+
+    """
+    从消息推断任务动作（确定性兜底）
+    """
+
+    msg = message.strip()
+
+    if "确认" in msg:
+
+        return "confirm"
+
+    if "取消" in msg:
+
+        return "cancel"
+
+    if "提交" in msg or "进度" in msg:
+
+        return "submit"
+
+    if "完成" in msg:
+
+        return "complete"
+
+    return "list"
 
 
 # 全局单例

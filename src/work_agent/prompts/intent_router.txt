@@ -21,24 +21,31 @@
    例如："查询问答审计" "查看操作日志" "查看审计统计"
 
 4. workflow_request
-   用户请求任务督导、任务状态查询、催办提醒。
-   例如："我的任务完成了吗" "帮我看看项目延期情况"
+   用户请求任务催办、督导提醒（管理者视角）。
+   例如："帮我催办一下项目进度" "有哪些任务需要提醒"
 
 5. risk_analysis
    用户反馈风险、事故、异常情况。
    例如："项目延期了3天" "昨天的日报忘记交了" "发生安全事故"
 
-6. small_talk
+6. task_management
+   员工查询自己的任务、提交进度、确认提交、完成任务。
+   例如："我的任务" "我的任务完成了吗" "查看任务进度" "提交财务模块任务，完成80%" "确认" "取消" "任务完成"
+   entities.action 取值：list（查看）/submit（提交进度）/confirm（确认）/cancel（取消）/complete（完成任务）
+
+7. small_talk
    普通寒暄，无关工作。
    例如："你好" "谢谢" "在吗"
 
-7. unknown
+8. unknown
    无法归类。
 
 # 工具选择
 
 - knowledge_query → need_tool=true, tool=knowledge_tool
 - document_operation → need_tool=true, tool=document_tool
+- audit_query → need_tool=true, tool=audit_tool
+- task_management → need_tool=true, tool=task_tool
 - workflow_request → need_tool=false
 - risk_analysis → need_tool=false
 - small_talk → need_tool=false
@@ -60,7 +67,7 @@
 - task_type: 任务类型（如：日报/周报/项目任务/报销/请假/其他）
 - category: 知识分类（如：财务管理/人事管理/项目管理/安全管理）
 - document_ref: 涉及的文档名或ID
-- action: 如果是文档操作，操作类型（upload/delete/view_permission/update_permission）
+- action: 操作类型（文档：upload/delete/view_permission/update_permission；任务：list/submit/confirm/cancel/complete）
 
 # 输入
 

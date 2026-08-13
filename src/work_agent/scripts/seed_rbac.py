@@ -19,6 +19,9 @@ PERMISSIONS = [
     ("audit:view", "查看审计", "查看问答与操作审计"),
     ("system:manage", "系统管理", "系统级运维操作（归档等）"),
     ("user:manage", "用户管理", "绑定/解绑企业微信账号"),
+    ("task:view", "查看任务", "查看任务列表/详情"),
+    ("task:create", "创建任务", "下发任务给员工"),
+    ("task:manage", "任务管理", "任务统计/督导管理"),
 ]
 
 # 角色 → 权限码
@@ -33,6 +36,9 @@ ROLES = {
             "audit:view",
             "system:manage",
             "user:manage",
+            "task:view",
+            "task:create",
+            "task:manage",
         ],
     },
     "TENANT_ADMIN": {
@@ -45,6 +51,9 @@ ROLES = {
             "audit:view",
             "system:manage",
             "user:manage",
+            "task:view",
+            "task:create",
+            "task:manage",
         ],
     },
     "DEPARTMENT_ADMIN": {
@@ -53,12 +62,15 @@ ROLES = {
             "document:view",
             "document:create",
             "audit:view",
+            "task:view",
+            "task:create",
         ],
     },
     "USER": {
         "name": "普通用户",
         "permissions": [
             "document:view",
+            "task:view",
         ],
     },
 }

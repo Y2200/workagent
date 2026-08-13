@@ -25,6 +25,11 @@ from work_agent.db.models.trace import (
 from work_agent.db.models.agent_config import AgentConfig
 from work_agent.db.models.prompt_version import PromptVersion
 from work_agent.db.models.llm_cost import LLMCostRecord
+from work_agent.db.models.task import (
+    Task,
+    TaskUpdate,
+    TaskPendingUpdate,
+)
 
 
 __all__ = [
@@ -46,5 +51,8 @@ __all__ = [
     "TraceSpan",
     "AgentConfig",
     "PromptVersion",
-    "LLMCostRecord"
+    "LLMCostRecord",
+    "Task",
+    "TaskUpdate",
+    "TaskPendingUpdate"
 ]

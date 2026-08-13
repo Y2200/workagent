@@ -43,6 +43,7 @@ from work_agent.api.resilience import router as resilience_router
 from work_agent.api.health import router as health_router
 from work_agent.api.wechat import router as wechat_router
 from work_agent.api.users import router as users_router
+from work_agent.api.tasks import router as tasks_router
 
 
 app = FastAPI(
@@ -89,6 +90,10 @@ app.include_router(
 
 app.include_router(
     users_router
+)
+
+app.include_router(
+    tasks_router
 )
 
 

@@ -6,23 +6,26 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-13，P6-1 生产已上线 + WeCom 接入实现完成）
+# ⚡ 当前状态（2026-08-13，WeCom 已上线 + 任务督导 MVP 完成）
 
-**代码状态**：本地 `master` 工作区有未提交改动（WeCom 接入）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API），FastAPI + PostgreSQL + Redis + Milvus + 管理员登录均正常。
+**代码状态**：本地 `master` 工作区有未提交改动（任务督导模块）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
 
-**WeCom（企业微信）接入 —— 实现完成，回归待跑**：
-- 回调：`api/wechat.py`（`GET/POST /api/wechat/callback`：SHA1 验签 + AES 解密 + 幂等去重 + 后台任务主动回复）
-- 加解密：`wechat/crypto.py` 手写 WXBizMsgCrypt（pycryptodome）；`wechat/client.py` 统一 WeComClient（Redis 缓存 token）；删除 `verify.py`/`auth.py`，`sender.py` 改薄门面
-- 绑定：`api/users.py`（`GET /api/admin/users`、`PUT/DELETE /{id}/wechat`，`user:manage` 权限）；前端 `Users.vue` 用户绑定页（路由/菜单已加）
-- 自动建号：`WECHAT_AUTO_CREATE_USER`（默认 false）+ `WECHAT_DEFAULT_TENANT_ID`
-- 测试：`scripts/test_wecom.py` —— Part A 加解密/Part B XML/Part C 回调 **已通过**；**Part D 用户绑定 + 全量回归待 Docker 起后跑**
-- 文档：`.env.example`、`deploy/README.md` 第七节（企微接入）
+**任务督导（AI Task Supervisor）MVP —— 完成，回归全绿 31/31**：
+- 模型：`tasks`/`task_updates`/`task_pending_updates` 三表（`db/models/task.py` + `scripts/migrate_tasks.py`）
+- 服务：`repositories/task_repository.py` + `services/task_service.py`（创建/查询/提交/确认/取消，AI 解析 `task_progress_parse` prompt + 确定性回退）
+- Agent：`agent/agents/task_agent.py` + `agent/tools/task_tool.py`（list/submit/confirm/cancel/complete）；新意图 `task_management`
+- 接入：intent_router prompt/规则、planner（kind=task + 任务消息归一化）、agent_registry/tool_registry 注册
+- **AI 确认机制**：员工提交 → AI 解析进度/摘要 → 写 pending（不落正式表）→ 回复「确认提交吗？」→ 员工回「确认」→ 落 task_updates + 更新 tasks.progress（完成=100）
+- Web：`api/tasks.py`（列表/创建/详情/负责人下拉 `task/employees`）+ 前端 `Tasks.vue`（创建/列表/详情/提交记录）
+- 权限：`task:view`/`task:create`/`task:manage` 加入 seed_rbac
+- 测试：`scripts/test_task_agent.py` 四部分（服务层/意图规划/Agent端到端/越权隔离）
+- 未做（后续）：自动提醒/风险（APScheduler）、Excel/Word/邮件、周报
 
 **下一步**：
-1. 启动 Docker（`docker compose up -d`）→ 跑 `test_wecom` 全量 + 全量回归
-2. commit + push WeCom 改动
-3. 服务器侧：`git pull` → `.env` 补 5 个企微变量 → 重跑 `seed_rbac`（user:manage）→ `deploy.sh`
-4. 企微后台配置（用户操作）：自建应用 → 接收消息 URL `https://api.wkcp.online/api/wechat/callback` + Token/EncodingAESKey（安全模式）→ 企业可信IP
+1. commit + push 任务督导改动
+2. 服务器侧：`git pull` → `migrate_tasks`（建表）→ `seed_rbac`（task 权限）→ `deploy.sh`（重建镜像）
+3. Web 登录 `https://wkcp.online` → 「任务管理」创建任务 → 员工企微「我的任务」可见
+4. 后续：APScheduler 自动督办、任务统计/周报/邮件（6-2.txt Phase 3/4）
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 

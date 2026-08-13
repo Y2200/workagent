@@ -1,6 +1,7 @@
 from work_agent.agent.agents.analysis_agent import AnalysisAgent
 from work_agent.agent.agents.knowledge_agent import KnowledgeAgent
 from work_agent.agent.agents.operation_agent import OperationAgent
+from work_agent.agent.agents.task_agent import TaskAgent
 
 
 class AgentRegistry:
@@ -22,6 +23,7 @@ class AgentRegistry:
                 KnowledgeAgent(),
                 OperationAgent(),
                 AnalysisAgent(),
+                TaskAgent(),
             ]
         ):
 

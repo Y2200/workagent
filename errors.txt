@@ -470,3 +470,43 @@ Phase：WeCom 接入
 修复：新增 wechat/client.py 统一 WeComClient（Redis 缓存 token 提前 200s 过期 + 内存兜底、send_text_message、get_user_info）；删除 auth.py；sender.py 改为 client 薄门面保持接口
 验证：import OK；生产需企微「企业可信IP」配置
 ====================
+
+====================
+时间：2026-08-13
+Phase：任务督导（AI Task Supervisor）
+文件：db/models/task.py
+问题：create_all 建表报 relation "ix_task_updates_task_id" already exists
+原因：TaskUpdate.task_id 同时有 index=True（自动 ix_task_updates_task_id）和 __table_args__ 里同名显式 Index，重复生成
+修复：删除冗余显式 Index，保留 index=True
+验证：migrate_tasks 通过，test_task_agent 全绿
+====================
+
+====================
+时间：2026-08-13
+Phase：任务督导
+文件：agent/planner.py + prompts/intent_router.txt
+问题：LLM 在 workflow_request/task_management 意图间摇摆，「我的任务完成了吗」时而归 workflow_request
+原因：prompt 里两意图示例重叠；LLM 无状态
+修复：prompt 消除重叠（workflow_request 只管催办/提醒）；planner 归一化——workflow_request 且含「任务/进度」→ task
+验证：test_agent_planner 场景3b 更新为 task 计划，全绿
+====================
+
+====================
+时间：2026-08-13
+Phase：任务督导
+文件：agent/tools/task_tool.py + services/task_service.py
+问题：complete 流程 tool 只改返回 dict 的 progress=100，DB pending 仍是原解析值 → 确认后进度不更新
+原因：tool 在响应上改 parsed，未影响已入库的 pending
+修复：submit_progress_feedback 加 force_progress 参数，complete 时直接以 100 写入 pending
+验证：test_task_agent Part 3 complete→100 通过
+====================
+
+====================
+时间：2026-08-13
+Phase：任务督导
+文件：scripts/test_task_agent.py
+问题：测试重复运行后员工积累多个同名任务，Part 3 提交解析到旧任务 → 断言失败
+原因：测试非幂等，未清理历史任务数据
+修复：_setup 开头清理测试员工(A财务员工/B市场员工)的 tasks/updates/pending
+验证：连续两次运行全绿
+====================

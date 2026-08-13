@@ -88,9 +88,18 @@ def test():
 
         assert "document:permission_manage" not in dept_perms, dept_perms
 
-        assert dept_perms == {"document:view", "document:create", "audit:view"}, dept_perms
+        assert dept_perms == {
+            "document:view",
+            "document:create",
+            "audit:view",
+            "task:view",
+            "task:create",
+        }, dept_perms
 
-        assert user_perms == {"document:view"}, user_perms
+        assert user_perms == {
+            "document:view",
+            "task:view",
+        }, user_perms
 
     finally:
 
