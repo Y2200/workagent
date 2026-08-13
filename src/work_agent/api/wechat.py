@@ -73,6 +73,35 @@ def _dedup(
         return True
 
 
+def _extract_encrypt(
+        body: str
+) -> str | None:
+    """
+    从企微 POST body 提取 <Encrypt> 密文（签名第 4 参数即此密文）
+
+    企微安全模式 body 为 <xml><Encrypt>密文</Encrypt></xml>；
+    非 XML 包装（明文/裸密文）返回 None，由调用方回退用整个 body。
+    """
+
+    if not body.strip().startswith("<"):
+
+        return None
+
+    try:
+
+        from xml.etree import ElementTree
+
+        root = ElementTree.fromstring(body)
+
+        encrypt = root.findtext("Encrypt")
+
+        return encrypt if encrypt is not None else None
+
+    except Exception:
+
+        return None
+
+
 def _handle_message(
         msg: dict
 ) -> None:
@@ -268,6 +297,21 @@ async def wechat_message(
     # 安全模式：验签 + 解密；明文模式：直接解析
     # ======================
 
+    encrypt = _extract_encrypt(body)
+
+    # 签名第 4 参数 = <Encrypt> 密文；非 XML 包装（裸密文）回退整个 body
+    sign_content = (
+        encrypt
+        if encrypt is not None
+        else body
+    )
+
+    logger.info(
+        "企微回调内容: body_prefix=%s encrypt_len=%d",
+        body[:40],
+        len(encrypt or ""),
+    )
+
     if msg_signature:
 
         try:
@@ -278,7 +322,7 @@ async def wechat_message(
                     msg_signature,
                     timestamp,
                     nonce,
-                    body,
+                    sign_content,
             ):
 
                 logger.warning(
@@ -288,7 +332,7 @@ async def wechat_message(
 
                 return PlainTextResponse("")
 
-            xml_text = crypto.decrypt(body)
+            xml_text = crypto.decrypt(sign_content)
 
             logger.info(
                 "企微消息解密成功: xml_len=%d",
