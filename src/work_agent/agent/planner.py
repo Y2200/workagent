@@ -196,7 +196,9 @@ class AgentPlanner:
 
             if action not in (
                 "list",
+                "detail",
                 "submit",
+                "submit_all",
                 "confirm",
                 "cancel",
                 "complete",
@@ -320,6 +322,10 @@ def _infer_task_action(
     if "取消" in msg:
 
         return "cancel"
+
+    if "全部任务" in msg or "所有任务" in msg:
+
+        return "submit_all"
 
     if "提交" in msg or "进度" in msg:
 

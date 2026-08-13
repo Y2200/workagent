@@ -26,6 +26,46 @@ _PROGRESS_RE = re.compile(
 )
 
 
+def _normalize_title(
+        title: str
+) -> str:
+    """
+    归一化任务名用于精确匹配（去空格/大小写/常见后缀）
+    """
+
+    text = title.strip().lower()
+
+    for suffix in ("任务", "项目", "工作", "的"):
+
+        if text.endswith(suffix):
+
+            text = text[:-len(suffix)].strip()
+
+    return text
+
+
+def _cosine(
+        a,
+        b
+) -> float:
+
+    """
+    余弦相似度
+    """
+
+    dot = sum(x * y for x, y in zip(a, b))
+
+    norm_a = sum(x * x for x in a) ** 0.5
+
+    norm_b = sum(x * x for x in b) ** 0.5
+
+    if norm_a == 0 or norm_b == 0:
+
+        return 0.0
+
+    return dot / (norm_a * norm_b)
+
+
 class TaskService:
 
     def __init__(
@@ -181,6 +221,132 @@ class TaskService:
         finally:
 
             db.close()
+
+    def get_employee_task_by_title(
+            self,
+            *,
+            tenant_id: str,
+            employee_id: int,
+            title: str
+    ):
+
+        """
+        在员工任务中按标题查找任务（精确 + 归一化）
+        """
+
+        if not title:
+
+            return None
+
+        db = SessionLocal()
+
+        try:
+
+            tasks = self.repository.get_employee_tasks(
+                db,
+                tenant_id,
+                employee_id,
+            )
+
+            norm = _normalize_title(title)
+
+            # 归一化完全匹配（不做简单 contains）
+            for task in tasks:
+
+                if _normalize_title(task.title) == norm:
+
+                    return task
+
+            return None
+
+        finally:
+
+            db.close()
+
+    def resolve_task_from_message(
+            self,
+            *,
+            tenant_id: str,
+            employee_id: int,
+            message: str
+    ):
+
+        """
+        任务上下文优先：短消息匹配员工任务名 → 返回任务
+
+        匹配优先级：
+        1. 归一化完全匹配任务名
+        2. 当前用户任务（即最近任务）
+        3. embedding 相似匹配（阈值 0.75）
+        4. （LLM 判断留待后续，当前由 IntentRouter 兜底）
+
+        仅处理短消息（任务名长度内），长句交给意图路由
+        """
+
+        msg = message.strip()
+
+        # 仅处理纯任务名长度的短消息
+        if not (1 <= len(msg) <= 16):
+
+            return None
+
+        # 含动作词（提交/进度/完成/确认等）→ 交给常规意图路由（submit/list 等）
+        if any(
+                word in msg
+                for word in ("提交", "进度", "完成", "确认", "取消", "查看", "我的")
+        ):
+
+            return None
+
+        task = self.get_employee_task_by_title(
+            tenant_id=tenant_id,
+            employee_id=employee_id,
+            title=msg,
+        )
+
+        if task:
+
+            return task
+
+        # embedding 相似匹配（复用 bge 模型，失败静默）
+        try:
+
+            from work_agent.core.container import rag_service
+
+            vec = rag_service.embedding.encode(
+                [msg]
+            )[0]
+
+            best = None
+
+            best_score = 0.0
+
+            for t in self.list_employee_tasks(
+                    tenant_id=tenant_id,
+                    employee_id=employee_id,
+            ):
+
+                title_vec = rag_service.embedding.encode(
+                    [t.title]
+                )[0]
+
+                score = _cosine(vec, title_vec)
+
+                if score > best_score:
+
+                    best = t
+
+                    best_score = score
+
+            if best and best_score >= 0.75:
+
+                return best
+
+        except Exception:
+
+            pass
+
+        return None
 
     def list_task_updates(
             self,

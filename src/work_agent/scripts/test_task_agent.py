@@ -623,6 +623,88 @@ def test_super_admin_visibility():
     print("Part 6 ✅ 平台管理员可见性（SUPER_ADMIN 全量/租户隔离/越权拒绝）")
 
 
+# ======================
+# Part 7 任务上下文路由（短任务名 → 任务意图，不进 risk）
+# ======================
+
+def test_task_context_routing():
+
+    emp = _user("A财务员工")
+
+    # 建一个名为「开发」的任务
+    task = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="开发",
+        creator_id=emp.id,
+        employee_id=emp.id,
+        department="财务部",
+    )
+
+    context = AgentContext.build(
+        user=emp,
+        channel="wechat",
+        permissions=_permissions(emp),
+    )
+
+    router = IntentRouter()
+
+    # ① 直接说任务名「开发」→ 任务意图 detail
+    intent = router.route(
+        "开发",
+        user_context=context.to_user_context(),
+        tenant_context={"tenant_id": context.tenant_id},
+    )
+
+    assert intent.intent == IntentType.TASK_MANAGEMENT, intent
+
+    assert intent.entities.get("action") == "detail", intent.entities
+
+    assert intent.entities.get("task_title") == "开发", intent.entities
+
+    plan = agent_planner.plan(
+        message="开发",
+        intent_result=intent,
+        context=context,
+    )
+
+    assert plan.kind == "task", plan.kind
+
+    assert plan.steps[0].action == "detail", plan.steps[0].action
+
+    # ② TaskAgent 返回任务详情
+    agent = TaskAgent()
+
+    result = agent.run(
+        context=context,
+        plan=plan,
+        message="开发",
+    )
+
+    assert "任务：开发" in result.response, result.response
+
+    assert "进度：0%" in result.response, result.response
+
+    # ③ 含动作词的长句不命中任务名（避免误判 detail）
+    matched = task_service.resolve_task_from_message(
+        tenant_id=emp.tenant_id,
+        employee_id=emp.id,
+        message="提交开发 完成50%",
+    )
+
+    assert matched is None, "含动作词消息不应触发任务名匹配"
+
+    # ④ 归一化匹配：「开发任务」也应命中「开发」
+    matched2 = task_service.resolve_task_from_message(
+        tenant_id=emp.tenant_id,
+        employee_id=emp.id,
+        message="开发任务",
+    )
+
+    assert matched2 is not None and matched2.id == task.id, matched2
+
+    print("Part 7 ✅ 任务上下文路由（短任务名→detail，动作词不误判）")
+
+
 def test():
 
     _setup()
@@ -638,6 +720,8 @@ def test():
     test_tenant_inheritance()
 
     test_super_admin_visibility()
+
+    test_task_context_routing()
 
 
 if __name__ == "__main__":

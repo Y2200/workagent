@@ -50,6 +50,25 @@ def _list_text(result: dict) -> str:
     return "\n".join(lines)
 
 
+STATUS_NAMES = {
+    "pending": "待处理",
+    "processing": "进行中",
+    "completed": "已完成",
+    "overdue": "已逾期",
+}
+
+
+def _detail_text(task: dict) -> str:
+
+    return (
+        f"任务：{task['title']}\n"
+        f"进度：{task['progress']}%\n"
+        f"状态：{STATUS_NAMES.get(task['status'], task['status'])}\n"
+        f"截止：{_format_deadline(task.get('deadline'))}\n"
+        f"优先级：{task.get('priority', 'normal')}"
+    )
+
+
 def _confirmation_text(task: dict, parsed: dict) -> str:
 
     done = parsed.get("done") or []
@@ -175,6 +194,17 @@ class TaskAgent(BaseAgent):
         if action == "list":
 
             return _list_text(result)
+
+        # 单个任务详情
+        if action == "detail":
+
+            if result.get("status") == "error":
+
+                return result.get("message", "未找到任务")
+
+            if result.get("task"):
+
+                return _detail_text(result["task"])
 
         # 提交进度 → 待确认
         if action in ("submit", "complete"):
