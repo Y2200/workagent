@@ -28,6 +28,9 @@
         <el-menu-item index="/users">
           <span>用户绑定</span>
         </el-menu-item>
+        <el-menu-item index="/tasks">
+          <span>任务管理</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

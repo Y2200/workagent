@@ -24,6 +24,7 @@ class IntentRouter:
         IntentType.AUDIT_QUERY: ("audit_tool", True),
         IntentType.WORKFLOW_REQUEST: ("", False),
         IntentType.RISK_ANALYSIS: ("", False),
+        IntentType.TASK_MANAGEMENT: ("task_tool", True),
         IntentType.SMALL_TALK: ("", False),
         IntentType.UNKNOWN: ("", False),
     }
@@ -81,9 +82,20 @@ class IntentRouter:
                 result.content
             )
 
-            return self._validate(
+            result = self._validate(
                 data
             )
+
+            # 短确认/取消词 → 强制任务确认动作（LLM 无状态，无法感知 pending）
+            override = self._task_override(
+                message
+            )
+
+            if override:
+
+                return override
+
+            return result
 
         except Exception:
 
@@ -175,6 +187,76 @@ class IntentRouter:
         return result
 
 
+    @staticmethod
+    def _task_override(
+            message: str
+    ) -> IntentResult | None:
+
+        """
+        短确认/取消词（如员工回复「确认」）→ 强制任务确认动作
+
+        仅限短消息，避免覆盖「确认提交XX任务 完成50%」这类提交消息
+        """
+
+        msg = message.strip()
+
+        if len(msg) > 10:
+
+            return None
+
+        if msg in ("确认", "确定") or msg.startswith("确认"):
+
+            return IntentResult(
+                intent=IntentType.TASK_MANAGEMENT,
+                confidence=0.9,
+                need_tool=True,
+                tool="task_tool",
+                entities={"action": "confirm"},
+                reasoning="确认指令",
+            )
+
+        if msg in ("取消",) or msg.startswith("取消"):
+
+            return IntentResult(
+                intent=IntentType.TASK_MANAGEMENT,
+                confidence=0.9,
+                need_tool=True,
+                tool="task_tool",
+                entities={"action": "cancel"},
+                reasoning="取消指令",
+            )
+
+        return None
+
+
+    @staticmethod
+    def _task_action_entities(
+            msg: str
+    ) -> dict:
+
+        """
+        规则回退时推断任务动作
+        """
+
+        if "确认" in msg:
+
+            return {"action": "confirm"}
+
+        if "取消" in msg:
+
+            return {"action": "cancel"}
+
+        if "提交" in msg or "进度" in msg:
+
+            return {"action": "submit"}
+
+        if "完成" in msg:
+
+            return {"action": "complete"}
+
+        return {"action": "list"}
+
+
     def _fallback(
             self,
             message: str
@@ -185,6 +267,33 @@ class IntentRouter:
         """
 
         msg = message.strip()
+
+        task_keywords = [
+            "我的任务",
+            "查看任务",
+            "任务进度",
+            "提交进度",
+            "提交任务",
+            "任务完成",
+            "确认提交",
+            "确认",
+            "取消",
+            "完成任务",
+        ]
+
+        if any(
+                keyword in msg
+                for keyword in task_keywords
+        ):
+
+            return IntentResult(
+                intent=IntentType.TASK_MANAGEMENT,
+                confidence=0.6,
+                need_tool=True,
+                tool="task_tool",
+                entities=self._task_action_entities(msg),
+                reasoning="规则回退：命中任务关键词",
+            )
 
         knowledge_keywords = [
             "制度",

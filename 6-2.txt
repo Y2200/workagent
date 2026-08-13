@@ -1,0 +1,427 @@
+Work Agent 下一阶段需求：AI任务督导系统设计与实现
+当前项目状态
+已有能力：
+企业微信消息入口已打通
+企业微信用户身份解析完成
+Agent Runtime 已完成
+用户体系已完成
+tenant 多租户体系已完成
+RAG 知识库已完成
+Tool Calling 架构已完成
+Web 管理端已有基础能力
+下一阶段目标：
+增加一个「AI任务督导 Agent」，实现企业内部任务下发、员工进度反馈、AI确认提交、自动督办、管理端统计。
+
+一、总体目标
+实现如下闭环：
+主管(Web)
+    |
+    | 创建任务
+    |
+    v
+
+员工(企微)
+    |
+    | 接收任务
+    |
+    | 每日反馈进度
+    |
+    v
+
+Task Agent
+    |
+    | AI解析
+    | AI确认
+    | 更新任务状态
+    |
+    v
+
+Web管理端
+
+任务进度看板
+部门统计
+员工完成情况
+风险任务
+自动周报
+二、新增 Agent
+新增：
+src/work_agent/agent/agents/task_agent.py
+职责：
+负责：
+查询员工任务
+创建任务
+接收任务进度
+AI确认提交
+判断任务风险
+生成任务总结
+不要修改现有 KnowledgeAgent。
+三、新增数据库模型
+1. tasks 表
+字段：
+id
+
+tenant_id
+
+title
+
+description
+
+creator_id
+
+manager_id
+
+employee_id
+
+department
+
+deadline
+
+status
+
+progress
+
+priority
+
+created_at
+
+updated_at
+status:
+pending
+processing
+completed
+overdue
+progress:
+0-100
+priority:
+low
+normal
+high
+2. task_updates 表
+员工每次提交记录。
+字段：
+id
+
+task_id
+
+employee_id
+
+content
+
+progress
+
+ai_summary
+
+confirmed
+
+created_at
+例如：
+员工输入：
+开发登录模块，目前完成80%，接口已经完成
+AI解析：
+{
+ progress:80,
+ summary:"完成登录模块和接口开发"
+}
+等待确认。
+四、新增 Task Repository
+增加：
+repositories/task_repository.py
+负责：
+create_task
+get_user_tasks
+update_progress
+get_pending_tasks
+get_overdue_tasks
+五、新增 Task Tool
+新增：
+agent/tools/task_tool.py
+支持：
+查询任务
+用户：
+我的任务
+返回：
+当前任务：
+
+1.
+开发财务模块
+
+进度:
+60%
+
+截止:
+8月20日
+
+
+2.
+测试接口
+
+进度:
+30%
+提交任务进度
+员工：
+我要提交任务
+
+财务模块已经完成70%
+
+完成:
+报销接口
+
+剩余:
+审批流程
+Tool 不立即保存。
+返回：
+待确认提交
+六、AI确认机制（重点）
+禁止：
+员工一句话直接修改任务。
+流程：
+员工：
+提交任务
+完成80%
+AI：
+解析：
+任务:
+财务模块
+
+进度:
+80%
+
+完成:
+报销接口
+
+剩余:
+审批流程
+回复：
+我检测到你的提交：
+
+任务：
+财务管理模块开发
+
+当前进度：
+80%
+
+已完成：
+- 报销接口
+
+剩余：
+- 审批流程
+
+
+确认提交吗？
+员工：
+确认
+才执行：
+insert task_updates
+
+update tasks.progress
+七、企微命令设计
+支持自然语言。
+例如：
+查看任务
+员工：
+我的任务
+提交进度
+员工：
+提交OA开发任务
+
+目前完成50%
+
+数据库已经完成
+完成任务
+员工：
+任务完成
+AI：
+确认：
+确认完成任务：
+
+XXX
+
+提交完成吗？
+八、自动督导任务
+增加定时任务。
+建议：
+APScheduler
+新增：
+scheduler/task_scheduler.py
+每天执行。
+逻辑：
+查询：
+未完成任务
++
+截止日期
++
+当前进度
+判断风险。
+例如：
+任务：
+20号截止
+
+当前13号
+
+完成20%
+AI判断：
+风险:
+高
+发送企微：
+提醒：
+
+你的《财务模块开发》
+
+当前完成20%
+
+距离截止7天。
+
+建议今天完成接口开发。
+九、Web管理端需求
+新增页面：
+任务管理
+功能：
+创建任务：
+字段：
+任务名称
+
+负责人
+
+部门
+
+截止时间
+
+优先级
+
+附件
+支持：
+手写任务
+上传文件
+十、文件任务解析
+主管上传：
+例如：
+项目计划.xlsx
+或者：
+任务说明.docx
+AI解析：
+生成：
+[
+ {
+  title:"完成接口开发",
+  employee:"张三",
+  deadline:"2026-08-20"
+ }
+]
+等待管理员确认后创建任务。
+十一、任务统计页面
+展示：
+部门：
+研发部
+
+员工     任务数   完成率   风险
+
+
+张三       5       80%     正常
+
+李四       3       40%     高风险
+支持：
+导出：
+Excel
+Word
+十二、自动周报
+新增 Report Agent。
+每周生成：
+XX部门任务周报
+
+
+一、本周完成情况
+
+完成任务:
+35
+
+
+二、延期任务
+
+xxx
+
+
+三、高风险任务
+
+xxx
+
+
+四、建议
+
+xxx
+支持：
+下载 Word
+邮件发送
+十三、邮件通知
+任务完成：
+自动邮件：
+标题：
+员工任务完成通知
+内容：
+员工:
+张三
+
+任务:
+财务模块开发
+
+完成时间:
+xxx
+
+完成度:
+100%
+十四、开发顺序
+严格按照：
+Phase 1
+完成：
+tasks表
+task_updates表
+Web创建任务
+企微查询任务
+目标：
+员工能看到任务。
+Phase 2
+完成：
+AI提交进度
+AI确认
+更新任务
+目标：
+员工能通过企微汇报。
+Phase 3
+完成：
+自动提醒
+风险判断
+目标：
+AI主动督促。
+Phase 4
+完成：
+Excel统计
+Word周报
+邮件
+十五、实现要求
+注意：
+不要破坏已有：
+Agent Runtime
+KnowledgeAgent
+Wechat Service
+RBAC
+Tenant
+新增模块应该符合当前架构。
+代码风格保持：
+agent
+ |
+ tool
+ |
+ service
+ |
+ repository
+ |
+ db model
+先实现 MVP，不要一次开发全部功能。
+第一目标：
+企业微信员工可以查看自己的任务，并通过自然语言提交进度，AI确认后同步到 Web。
+请先分析现有项目结构，然后给出：
+需要新增哪些文件
+需要修改哪些文件
+数据库 migration
+实现顺序
+MVP代码方案
+不要直接大改，保持现有架构。

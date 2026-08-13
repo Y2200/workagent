@@ -77,6 +77,87 @@ class WechatBindRequest(BaseModel):
     wechat_user_id: str = ""
 
 
+class TaskCreateRequest(BaseModel):
+
+    title: str
+
+    description: str = ""
+
+    employee_id: int
+
+    manager_id: int | None = None
+
+    department: str = ""
+
+    deadline: datetime | None = None
+
+    # low / normal / high
+    priority: str = "normal"
+
+
+class TaskOut(BaseModel):
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+
+    tenant_id: str
+
+    title: str
+
+    description: str
+
+    creator_id: int | None
+
+    manager_id: int | None
+
+    employee_id: int
+
+    department: str
+
+    deadline: datetime | None
+
+    status: str
+
+    progress: int
+
+    priority: str
+
+    created_at: datetime
+
+    employee_username: str = ""
+
+
+class TaskUpdateOut(BaseModel):
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+
+    task_id: int
+
+    employee_id: int
+
+    content: str
+
+    progress: int
+
+    ai_summary: str
+
+    confirmed: bool
+
+    created_at: datetime
+
+
+class TaskDetailOut(TaskOut):
+
+    updates: list[TaskUpdateOut] = []
+
+
 class PermissionOut(BaseModel):
 
     model_config = ConfigDict(

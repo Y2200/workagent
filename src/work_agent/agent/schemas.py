@@ -17,6 +17,8 @@ class IntentType:
 
     RISK_ANALYSIS = "risk_analysis"
 
+    TASK_MANAGEMENT = "task_management"
+
     SMALL_TALK = "small_talk"
 
     UNKNOWN = "unknown"

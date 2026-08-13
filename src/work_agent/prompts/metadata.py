@@ -138,4 +138,15 @@ PROMPT_METADATA = {
             "entity_limit",
         ],
     },
+    # ======================
+    # 任务督导（AI Task Supervisor）
+    # ======================
+    "task_progress_parse": {
+        "version": "1.0",
+        "description": "解析员工任务进度反馈",
+        "variables": [
+            "message",
+            "task_list",
+        ],
+    },
 }

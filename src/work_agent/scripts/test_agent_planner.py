@@ -122,7 +122,7 @@ def test():
     print(f"场景3a ✅ 风险 → risk 计划 (intent={intent3.intent})")
 
     # ======================
-    # 场景3b：督导请求 → legacy 计划
+    # 场景3b：任务查询 → task 计划（任务督导 Agent 接管）
     # ======================
 
     intent3b = router.route(
@@ -137,9 +137,11 @@ def test():
         context=context,
     )
 
-    assert plan3b.kind == "legacy", plan3b.kind
+    assert plan3b.kind == "task", plan3b.kind
 
-    print(f"场景3b ✅ 督导请求 → legacy 计划 (intent={intent3b.intent})")
+    assert plan3b.steps[0].tool == "task_tool", plan3b.steps
+
+    print(f"场景3b ✅ 任务查询 → task 计划 (intent={intent3b.intent})")
 
     # ======================
     # 场景4：LLM 规划（plan_with_llm）
