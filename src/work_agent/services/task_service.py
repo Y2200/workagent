@@ -465,6 +465,21 @@ class TaskService:
                     ),
                 }
 
+            # 兜底清理：summary 不应包含任务名（LLM 偶发把任务名当摘要）
+            summary = parsed.get("summary", "")
+
+            if task.title and task.title in summary:
+
+                cleaned = (
+                    summary.replace(task.title, "")
+                    .strip(" ，,。")
+                )
+
+                parsed["summary"] = (
+                    cleaned
+                    or "未提供具体完成内容"
+                )
+
             pending = self.repository.upsert_pending(
                 db,
                 task_id=task.id,
@@ -690,10 +705,39 @@ class TaskService:
             "",
         )
 
+        # 摘取实际完成内容：去掉任务名 + 「提交/更新」指令 + 「完成X%」框架
+        summary = content
+
+        if task_title:
+
+            summary = summary.replace(
+                task_title,
+                "",
+            )
+
+        summary = re.sub(
+            r"^\s*(提交|更新)\s*",
+            "",
+            summary,
+        )
+
+        # 只剥开头的「完成X%」框架，保留其后真正的完成内容
+        summary = re.sub(
+            r"^\s*(已?完成)?\s*\d{1,3}\s*[%％]",
+            "",
+            summary,
+        )
+
+        summary = summary.strip(" ，,。")
+
+        if not summary:
+
+            summary = "未提供具体完成内容"
+
         return {
             "task_title": task_title,
             "progress": progress,
-            "summary": content[:100],
+            "summary": summary,
             "done": [],
             "remaining": [],
         }
