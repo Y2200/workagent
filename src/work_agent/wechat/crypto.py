@@ -12,6 +12,7 @@
 import base64
 import hashlib
 import hmac
+import logging
 import random
 import struct
 
@@ -110,12 +111,48 @@ class WXBizMsgCrypt:
             self.iv,
         )
 
-        plain = unpad(
-            cipher.decrypt(
-                base64.b64decode(text)
-            ),
-            AES.block_size,
-        )
+        decoded = base64.b64decode(text)
+
+        raw = cipher.decrypt(decoded)
+
+        try:
+
+            plain = unpad(
+                raw,
+                AES.block_size,
+            )
+
+        except ValueError:
+
+            # 诊断：密钥错误时打印结构猜测，便于核对 EncodingAESKey
+            try:
+
+                guess_len = struct.unpack(
+                    ">I",
+                    raw[16:20],
+                )[0]
+
+                guess = raw[
+                    20:20 + min(guess_len, 40)
+                ].decode(
+                    "utf-8",
+                    errors="replace",
+                )
+
+            except Exception:
+
+                guess_len = -1
+
+                guess = ""
+
+            logging.getLogger(__name__).warning(
+                "企微解密 padding 失败: decoded_len=%d guess_len=%d head=%s",
+                len(raw),
+                guess_len,
+                guess[:40],
+            )
+
+            raise
 
         msg_len = struct.unpack(
             ">I",
