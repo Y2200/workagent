@@ -441,8 +441,67 @@ def test_callback():
 
         settings.wechat_token = TOKEN
 
+        # 9) 企微实际格式：XML 包装安全模式 <xml><Encrypt>密文</Encrypt></xml>
+        #    签名第 4 参数是 Encrypt 密文，不是整个 body
+        xml_msg = (
+            f"<xml><ToUserName>{CORP_ID}</ToUserName>"
+            "<FromUserName>wangwu</FromUserName>"
+            "<MsgType>text</MsgType>"
+            "<Content>企微实际格式</Content>"
+            "<MsgId>9200</MsgId></xml>"
+        )
+
+        ciphertext = crypto.encrypt(xml_msg)
+
+        wrapped = (
+            f"<xml><Encrypt>{ciphertext}</Encrypt></xml>"
+        )
+
+        timestamp, nonce = "999", "1000"
+
+        resp = client.post(
+            "/api/wechat/callback",
+            params={
+                "msg_signature": _sign(
+                    TOKEN,
+                    timestamp,
+                    nonce,
+                    ciphertext,          # ← 用密文，不是整个 wrapped body
+                ),
+                "timestamp": timestamp,
+                "nonce": nonce,
+            },
+            content=wrapped,
+        )
+
+        assert resp.status_code == 200, resp.text
+
+        assert (
+            "send",
+            "wangwu",
+            "测试回复",
+        ) in calls, calls
+
+        # 9b) 用整个 wrapped body 验签（错误做法）必须失败
+        resp = client.post(
+            "/api/wechat/callback",
+            params={
+                "msg_signature": _sign(
+                    TOKEN,
+                    timestamp,
+                    nonce,
+                    wrapped,             # ← 错误：用整个 body
+                ),
+                "timestamp": timestamp,
+                "nonce": nonce,
+            },
+            content=wrapped,
+        )
+
+        assert resp.text == ""
+
         print(
-            "Part C ✅ 回调路由（验签/解密/明文/非text/幂等/未配置）"
+            "Part C ✅ 回调路由（验签/解密/明文/非text/幂等/未配置/Encrypt格式）"
         )
 
     finally:
