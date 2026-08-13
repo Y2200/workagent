@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from fastapi import FastAPI, Request
@@ -7,6 +8,13 @@ from datetime import datetime
 
 from work_agent.config import settings
 from work_agent.core.exceptions import TenantAccessDenied
+
+
+# 生产/排障日志：INFO 级输出到 stdout（docker logs 可见）
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 
 # Windows 控制台/管道默认 GBK 编码，agent 节点 print() 可能触发

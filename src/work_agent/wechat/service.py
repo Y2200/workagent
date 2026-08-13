@@ -8,6 +8,7 @@ Agent 编排统一交给 AgentRuntime。
 本模块只返回结果 dict，保持可测试。
 """
 
+import logging
 import secrets
 import time
 
@@ -20,6 +21,9 @@ from work_agent.data_filter import clean_message
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.user_repository import UserRepository
 from work_agent.wechat.client import wecom_client
+
+
+logger = logging.getLogger(__name__)
 
 
 def _auto_create_user(
@@ -148,6 +152,12 @@ def process_message(
 
         wechat_user_id = cleaned["user"]
 
+        logger.info(
+            "process_message: wechat_user_id=%s content=%s",
+            wechat_user_id,
+            cleaned["content"][:60],
+        )
+
         # ======================
         # 身份解析
         # FromUserName → users.wechat_user_id → tenant/department/role
@@ -155,6 +165,13 @@ def process_message(
 
         user = _resolve_user(
             wechat_user_id
+        )
+
+        logger.info(
+            "身份解析结果: found=%s user_id=%s tenant=%s",
+            bool(user),
+            getattr(user, "id", None),
+            getattr(user, "tenant_id", None),
         )
 
         if not user:
@@ -188,11 +205,24 @@ def process_message(
         # Agent 执行（统一 Runtime）
         # ======================
 
-        return agent_runtime.execute(
+        logger.info(
+            "调用 agent_runtime.execute: user_id=%s",
+            user.id,
+        )
+
+        result = agent_runtime.execute(
             message=cleaned["content"],
             user=user,
             channel="wechat",
         )
+
+        logger.info(
+            "agent_runtime 返回: keys=%s response_len=%d",
+            sorted(result.keys()),
+            len(result.get("response") or ""),
+        )
+
+        return result
 
     except Exception as exc:
 

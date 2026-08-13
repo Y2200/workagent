@@ -9,12 +9,15 @@
 Redis 不可用时优雅降级（同 health_service 的可选依赖策略）。
 """
 
+import logging
 import time
 
 import requests
 
 from work_agent.config import settings
 
+
+logger = logging.getLogger(__name__)
 
 _BASE = "https://qyapi.weixin.qq.com/cgi-bin"
 
@@ -90,6 +93,11 @@ class WeComClient:
 
         if data.get("errcode") != 0:
 
+            logger.warning(
+                "access_token 获取失败: %s",
+                data,
+            )
+
             raise Exception(
                 f"获取 access_token 失败: {data}"
             )
@@ -104,6 +112,11 @@ class WeComClient:
         self._cache_set(
             token,
             max(expire, 60),
+        )
+
+        logger.info(
+            "access_token 获取成功（缓存 %ds）",
+            expire,
         )
 
         return token
@@ -189,7 +202,18 @@ class WeComClient:
             timeout=10,
         )
 
-        return response.json()
+        result = response.json()
+
+        logger.info(
+            "send_text_message: to=%s content_len=%d → errcode=%s invaliduser=%s errmsg=%s",
+            user_id,
+            len(content),
+            result.get("errcode"),
+            result.get("invaliduser"),
+            result.get("errmsg"),
+        )
+
+        return result
 
     # ======================
     # 用户资料（自动建号用）

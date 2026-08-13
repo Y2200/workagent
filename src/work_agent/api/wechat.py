@@ -82,8 +82,21 @@ def _handle_message(
 
     try:
 
+        logger.info(
+            "后台任务开始: user=%s content=%s",
+            msg.get("user"),
+            (msg.get("content") or "")[:60],
+        )
+
         result = process_message(
             msg
+        )
+
+        logger.info(
+            "process_message 结果: keys=%s error=%s response_len=%d",
+            sorted(result.keys()),
+            result.get("error"),
+            len(result.get("response") or ""),
         )
 
         if result.get("error"):
@@ -105,6 +118,12 @@ def _handle_message(
             resp = wecom_client.send_text_message(
                 msg["user"],
                 text,
+            )
+
+            logger.info(
+                "企微回复发送返回: errcode=%s invaliduser=%s",
+                resp.get("errcode"),
+                resp.get("invaliduser"),
             )
 
             if resp.get("errcode") != 0:
@@ -233,6 +252,14 @@ async def wechat_message(
         errors="ignore",
     )
 
+    logger.info(
+        "企微回调 POST 到达: has_sig=%s ts=%s nonce=%s body_len=%d",
+        bool(msg_signature),
+        timestamp,
+        nonce,
+        len(body),
+    )
+
     if not body:
 
         return PlainTextResponse("")
@@ -254,9 +281,19 @@ async def wechat_message(
                     body,
             ):
 
+                logger.warning(
+                    "企微签名校验失败（忽略）: sig=%s",
+                    msg_signature,
+                )
+
                 return PlainTextResponse("")
 
             xml_text = crypto.decrypt(body)
+
+            logger.info(
+                "企微消息解密成功: xml_len=%d",
+                len(xml_text),
+            )
 
         except Exception:
 
@@ -276,6 +313,14 @@ async def wechat_message(
             xml_text
         )
 
+        logger.info(
+            "企微消息解析: user=%s msg_type=%s msg_id=%s content_len=%d",
+            msg.get("user"),
+            msg.get("msg_type"),
+            msg.get("msg_id"),
+            len(msg.get("content", "")),
+        )
+
     except Exception:
 
         logger.exception(
@@ -290,13 +335,31 @@ async def wechat_message(
         or not msg.get("user")
     ):
 
+        logger.warning(
+            "忽略消息（非text/空内容/空用户）: msg_type=%s user=%s content_len=%d",
+            msg.get("msg_type"),
+            msg.get("user"),
+            len(msg.get("content", "")),
+        )
+
         return PlainTextResponse("")
 
     if not _dedup(
             msg.get("msg_id", "")
     ):
 
+        logger.info(
+            "重复消息忽略: msg_id=%s",
+            msg.get("msg_id"),
+        )
+
         return PlainTextResponse("")
+
+    logger.info(
+        "消息入后台任务: user=%s msg_id=%s",
+        msg.get("user"),
+        msg.get("msg_id"),
+    )
 
     background_tasks.add_task(
         _handle_message,
