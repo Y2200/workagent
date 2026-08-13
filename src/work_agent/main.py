@@ -25,9 +25,6 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from fastapi import Request
 
-from work_agent.wechat.service import process_message
-from work_agent.wechat.parser import parse_wechat_xml
-from work_agent.wechat.verify import verify_signature
 from work_agent.api.admin import router as admin_router
 from work_agent.api.knowledge_intelligence import router as knowledge_intelligence_router
 from work_agent.api.trace import router as trace_router
@@ -36,6 +33,8 @@ from work_agent.api.prompt import router as prompt_router
 from work_agent.api.cost import router as cost_router
 from work_agent.api.resilience import router as resilience_router
 from work_agent.api.health import router as health_router
+from work_agent.api.wechat import router as wechat_router
+from work_agent.api.users import router as users_router
 
 
 app = FastAPI(
@@ -74,6 +73,14 @@ app.include_router(
 
 app.include_router(
     health_router
+)
+
+app.include_router(
+    wechat_router
+)
+
+app.include_router(
+    users_router
 )
 
 
@@ -136,46 +143,3 @@ async def config_test():
         "redis": settings.redis_url,
         "knowledge": settings.knowledge_path
     }
-
-
-@app.get("/wechat/message")
-async def wechat_verify(
-    msg_signature:str,
-    timestamp:str,
-    nonce:str,
-    echostr:str
-):
-
-    return verify_signature(
-        msg_signature,
-        timestamp,
-        nonce,
-        echostr
-    )
-
-
-
-@app.post("/wechat/message")
-async def wechat_message(
-        request:Request
-):
-
-    body = await request.body()
-
-    xml_data = body.decode(
-        "utf-8",
-        errors="ignore"
-    )
-
-
-    message = parse_wechat_xml(
-        xml_data
-    )
-
-
-    result = process_message(
-        message
-    )
-
-
-    return result

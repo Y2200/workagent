@@ -25,6 +25,9 @@
         <el-menu-item index="/operations">
           <span>操作审计</span>
         </el-menu-item>
+        <el-menu-item index="/users">
+          <span>用户绑定</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

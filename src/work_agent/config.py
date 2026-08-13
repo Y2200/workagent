@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
 
     # ======================
-    # 企业微信
+    # 企业微信（WeCom）
     # ======================
 
     wechat_corp_id: str = ""
@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     wechat_token: str = ""
 
     wechat_agent_id: str = ""
+
+    # 接收消息安全模式 EncodingAESKey（43 字符）；为空则回调验签/解密不可用
+    wechat_encoding_aes_key: str = ""
+
+    # 首次收到未绑定用户消息时是否自动建号（默认关；身份可信但租户归属需配置）
+    wechat_auto_create_user: bool = False
+
+    # 自动建号用户归属租户
+    wechat_default_tenant_id: str = ""
 
     # ======================
     # 大模型

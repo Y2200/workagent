@@ -65,6 +65,45 @@ class UserRepository:
         )
 
 
+    def list_all(
+            self,
+            db: Session,
+            tenant_id: str = "",
+            keyword: str = ""
+    ):
+
+        """
+        用户管理列表（企微绑定用）
+
+        tenant_id 非空时按租户过滤（租户管理员）；空则平台全量（SUPER_ADMIN）
+        """
+
+        query = db.query(User)
+
+        if tenant_id:
+
+            query = query.filter(
+                User.tenant_id == tenant_id
+            )
+
+        if keyword:
+
+            like = f"%{keyword}%"
+
+            query = query.filter(
+                (
+                    User.username.like(like)
+                    | User.department.like(like)
+                    | User.wechat_user_id.like(like)
+                )
+            )
+
+        return (
+            query.order_by(User.id)
+            .all()
+        )
+
+
     def create(
             self,
             db: Session,

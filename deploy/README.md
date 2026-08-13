@@ -154,3 +154,57 @@ bash deploy/scripts/init-prod.sh
 docker compose -f deploy/docker-compose.prod.yml ps
 curl -fsS https://wkcp.online && curl -fsS https://api.wkcp.online/health
 ```
+
+---
+
+## 七、企业微信（WeCom）接入
+
+### 1. 企微管理后台配置（用户操作）
+
+1. 企业微信管理后台 → 应用管理 → 自建应用 → 创建「Work Agent」
+2. 记录 `AgentId`、`Secret`；「我的企业」→ 企业信息复制 `CorpID`
+3. 应用 → 接收消息 → 设置 API 接收：
+   - URL：`https://api.wkcp.online/api/wechat/callback`
+   - 随机生成 `Token` 与 `EncodingAESKey`（43 字符），加密方式选**安全模式**
+   - 保存时企微会立即发送一次 URL 验证请求（GET），成功即通过
+4. 应用 → 企业可信IP：加入服务器公网 IP（否则 gettoken / message/send 被拒）
+
+### 2. 服务器 .env 补充变量
+
+```bash
+WECHAT_CORP_ID=wwxxxxxxxxxxxxxxxxxx
+WECHAT_SECRET=<Secret>
+WECHAT_TOKEN=<Token>
+WECHAT_AGENT_ID=<AgentId>
+WECHAT_ENCODING_AES_KEY=<EncodingAESKey 43字符>
+WECHAT_AUTO_CREATE_USER=false
+WECHAT_DEFAULT_TENANT_ID=
+```
+
+### 3. 部署
+
+```bash
+cd /opt/work-agent
+git pull
+# 注册 user:manage 权限（幂等，可重复执行）
+docker compose -f deploy/docker-compose.prod.yml --env-file .env exec backend \
+  python -m work_agent.scripts.seed_rbac
+bash deploy/scripts/deploy.sh
+```
+
+### 4. 验证
+
+```bash
+# URL 验证：无 msg_signature（明文模式）会原样回显 echostr，便于确认路由可达
+curl -fsS "https://api.wkcp.online/api/wechat/callback?echostr=test"
+# 后端日志：员工发消息后应看到请求进入
+docker logs -f work-agent-backend
+```
+
+### 5. 用户绑定
+
+- 登录 `https://wkcp.online` → 菜单「用户绑定」：给员工填写企微 `userid` 完成绑定（`user:manage` 权限，SUPER_ADMIN / TENANT_ADMIN）
+- 或 API：
+  - `PUT /api/admin/users/{id}/wechat` body `{"wechat_user_id": "zhangsan"}`
+  - `DELETE /api/admin/users/{id}/wechat` 解绑
+- 未绑定员工提问 → 收到「请联系管理员绑定」提示；`WECHAT_AUTO_CREATE_USER=true` 时首次消息自动建号（需配置 `WECHAT_DEFAULT_TENANT_ID`）

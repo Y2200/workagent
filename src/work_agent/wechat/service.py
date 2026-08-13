@@ -3,17 +3,115 @@
 
 只负责：微信协议、消息收发、身份解析。
 Agent 编排统一交给 AgentRuntime。
+
+消息回复由回调层负责主动推送（wechat/client.py send_text_message），
+本模块只返回结果 dict，保持可测试。
 """
 
+import secrets
 import time
 
 from uuid import uuid4
 
 from work_agent.agent.runtime import agent_runtime
+from work_agent.config import settings
 from work_agent.core.audit_logger import audit_logger
 from work_agent.data_filter import clean_message
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.user_repository import UserRepository
+from work_agent.wechat.client import wecom_client
+
+
+def _auto_create_user(
+        wechat_user_id: str
+):
+    """
+    首次消息自动建号（WECHAT_AUTO_CREATE_USER=true 时）
+
+    身份可信（FromUserName 由企微验证）；租户取配置默认值，角色默认 USER。
+    密码哈希为随机值 → 无法通过密码登录，只能企微访问。
+    """
+
+    info = wecom_client.get_user_info(
+        wechat_user_id
+    )
+
+    if info.get("errcode") != 0:
+
+        return None
+
+    name = info.get(
+        "name",
+        wechat_user_id,
+    )
+
+    # 懒加载避免循环依赖
+    from work_agent.services.auth_service import AuthService
+
+    from work_agent.services.rbac_service import RBACService
+
+    db = SessionLocal()
+
+    try:
+
+        repo = UserRepository()
+
+        user = repo.create(
+            db,
+            username=f"wx_{wechat_user_id}",
+            password_hash=AuthService.hash_password(
+                secrets.token_urlsafe(32)
+            ),
+            department="",
+            role="员工",
+            wechat_user_id=wechat_user_id,
+            tenant_id=settings.wechat_default_tenant_id,
+        )
+
+        RBACService().assign_role(
+            db,
+            user.id,
+            "USER",
+        )
+
+        return user
+
+    finally:
+
+        db.close()
+
+
+def _resolve_user(
+        wechat_user_id: str
+):
+    """
+    企微 userid → 系统用户；未绑定按配置自动建号或返回 None
+    """
+
+    db = SessionLocal()
+
+    try:
+
+        user = UserRepository().get_by_wechat_user_id(
+            db,
+            wechat_user_id,
+        )
+
+        if user:
+
+            return user
+
+        if settings.wechat_auto_create_user:
+
+            return _auto_create_user(
+                wechat_user_id
+            )
+
+        return None
+
+    finally:
+
+        db.close()
 
 
 def process_message(
@@ -24,6 +122,18 @@ def process_message(
     处理企业微信消息
 
     流程：解析消息 → 身份解析 → AgentRuntime 执行
+
+    返回：
+        {
+            "response": str,          # Agent 回复（已绑定用户）
+            "request_id": str,
+        }
+    或错误：
+        {
+            "error": str,
+            "user": str,
+            "message": str,           # 需主动推送给用户的提示
+        }
     """
 
     request_id = str(uuid4())
@@ -43,18 +153,9 @@ def process_message(
         # FromUserName → users.wechat_user_id → tenant/department/role
         # ======================
 
-        db = SessionLocal()
-
-        try:
-
-            user = UserRepository().get_by_wechat_user_id(
-                db,
-                wechat_user_id
-            )
-
-        finally:
-
-            db.close()
+        user = _resolve_user(
+            wechat_user_id
+        )
 
         if not user:
 
