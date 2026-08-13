@@ -17,6 +17,71 @@ from sqlalchemy.orm import Mapped, mapped_column
 from work_agent.db.base import Base
 
 
+class TaskNotification(Base):
+
+    """
+    任务通知记录表
+
+    记录企微/邮件/系统消息发送状态，用于历史查询、失败重试、统计
+    """
+
+    __tablename__ = "task_notifications"
+
+    __table_args__ = (
+        Index(
+            "ix_task_notifications_task",
+            "tenant_id",
+            "task_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True
+    )
+
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        index=True
+    )
+
+    task_id: Mapped[int] = mapped_column(
+        BigInteger,
+        index=True
+    )
+
+    receiver_id: Mapped[int] = mapped_column(
+        BigInteger
+    )
+
+    # wechat / email / system
+    channel: Mapped[str] = mapped_column(
+        String(16),
+        default="wechat"
+    )
+
+    content: Mapped[str] = mapped_column(
+        Text
+    )
+
+    # pending / sent / failed
+    status: Mapped[str] = mapped_column(
+        String(16),
+        default="pending"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+
+
 class Task(Base):
 
     """

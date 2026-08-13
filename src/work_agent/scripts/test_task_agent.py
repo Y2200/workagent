@@ -879,6 +879,119 @@ def test_batch_submit():
     print("Part 9 ✅ 批量任务提交（submit_all→批量预览→确认批量更新）")
 
 
+# ======================
+# Part 10 任务通知记录（落库/发送成功/失败不影响主流程）
+# ======================
+
+def test_notifications():
+
+    from work_agent.db.models.task import TaskNotification
+
+    from work_agent.services.notification_service import (
+        notification_service,
+    )
+
+    emp = _user("A财务员工")
+
+    task = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="通知测试",
+        employee_id=emp.id,
+        department="财务部",
+    )
+
+    # ① 直接落库记录
+    n = notification_service.record(
+        tenant_id=emp.tenant_id,
+        task_id=task.id,
+        receiver_id=emp.id,
+        channel="wechat",
+        content="测试通知",
+        status="pending",
+    )
+
+    assert n.task_id == task.id, n.task_id
+
+    assert n.status == "pending", n.status
+
+    # ② 发送成功（mock 企微）
+    import work_agent.wechat.client as wc
+
+    class FakeClient:
+
+        def send_text_message(
+                self,
+                user_id,
+                content,
+        ):
+
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+            }
+
+    wc.wecom_client = FakeClient()
+
+    result = notification_service.send_wechat(
+        tenant_id=emp.tenant_id,
+        task_id=task.id,
+        receiver_id=emp.id,
+        wechat_user_id="wx_test",
+        content="发送测试",
+    )
+
+    assert result["ok"] is True, result
+
+    assert result["status"] == "sent", result
+
+    # ③ 发送失败（mock 抛异常）→ 不影响调用方，记录 failed
+    class FailClient:
+
+        def send_text_message(
+                self,
+                user_id,
+                content,
+        ):
+
+            raise Exception("wechat api down")
+
+    wc.wecom_client = FailClient()
+
+    result2 = notification_service.send_wechat(
+        tenant_id=emp.tenant_id,
+        task_id=task.id,
+        receiver_id=emp.id,
+        wechat_user_id="wx_test",
+        content="发送测试2",
+    )
+
+    assert result2["ok"] is False, result2
+
+    assert result2["status"] == "failed", result2
+
+    # ④ 落库校验：3 条记录，sent 与 failed 都在
+    db = SessionLocal()
+
+    rows = (
+        db.query(TaskNotification)
+        .filter(TaskNotification.task_id == task.id)
+        .all()
+    )
+
+    db.close()
+
+    assert len(rows) == 3, len(rows)
+
+    statuses = {
+        r.status
+        for r in rows
+    }
+
+    assert {"pending", "sent", "failed"} <= statuses, statuses
+
+    print("Part 10 ✅ 任务通知记录（落库/发送成功/失败不影响主流程）")
+
+
 def test():
 
     _setup()
@@ -900,6 +1013,8 @@ def test():
     test_parse_optimization()
 
     test_batch_submit()
+
+    test_notifications()
 
 
 if __name__ == "__main__":

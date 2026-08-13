@@ -29,6 +29,7 @@ from work_agent.db.models.task import (
     Task,
     TaskUpdate,
     TaskPendingUpdate,
+    TaskNotification,
 )
 
 
@@ -54,5 +55,6 @@ __all__ = [
     "LLMCostRecord",
     "Task",
     "TaskUpdate",
-    "TaskPendingUpdate"
+    "TaskPendingUpdate",
+    "TaskNotification"
 ]
