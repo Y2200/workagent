@@ -510,3 +510,14 @@ Phase：任务督导
 修复：_setup 开头清理测试员工(A财务员工/B市场员工)的 tasks/updates/pending
 验证：连续两次运行全绿
 ====================
+
+====================
+时间：2026-08-13
+Phase：任务督导
+文件：services/task_service.py + api/tasks.py
+问题：Web 创建任务 tenant_id 为空 → 员工企微「我的任务」查不到
+原因：创建者 admin(SUPER_ADMIN) tenant_id=''（平台单租户占位），任务继承空租户；而员工按 tenant_id='1' 过滤
+修复：任务 tenant_id 归属「数据所有者」= 负责人 employee 的租户（创建者兜底，皆空拒绝）；前端不传 tenant_id；tasks.tenant_id 加 CHECK(<>'') 约束
+验证：test_task_agent Part 5 租户继承 + 空租户 IntegrityError 拦截；生产需重跑 migrate_tasks（回填历史空租户任务）
+教训：多租户数据继承统一原则——tenant_id 永远来自数据所有者（负责人/员工），不来自创建者，更不来自前端
+====================
