@@ -54,6 +54,26 @@ class IntentRouter:
         意图路由
         """
 
+        # 任务上下文优先：消息匹配员工任务名 → 直接任务意图（不进 LLM）
+        task_match = self._match_task_context(
+            message,
+            user_context,
+        )
+
+        if task_match:
+
+            return IntentResult(
+                intent=IntentType.TASK_MANAGEMENT,
+                confidence=0.95,
+                need_tool=True,
+                tool="task_tool",
+                entities={
+                    "action": "detail",
+                    "task_title": task_match,
+                },
+                reasoning="任务上下文匹配",
+            )
+
         try:
 
             loaded = prompt_manager.load(
@@ -186,6 +206,54 @@ class IntentRouter:
 
         return result
 
+
+    @staticmethod
+    def _match_task_context(
+            message: str,
+            user_context: dict | None
+    ) -> str | None:
+
+        """
+        任务上下文匹配：短消息命中用户任务名 → 返回任务标题
+
+        仅限短消息（≤16 字符），避免覆盖长句提交/查询
+        """
+
+        if not user_context:
+
+            return None
+
+        user_id = user_context.get(
+            "user_id"
+        )
+
+        tenant_id = (
+            user_context.get(
+                "tenant_id",
+                "",
+            )
+            or ""
+        )
+
+        if not user_id or not tenant_id:
+
+            return None
+
+        try:
+
+            from work_agent.services.task_service import task_service
+
+            task = task_service.resolve_task_from_message(
+                tenant_id=tenant_id,
+                employee_id=user_id,
+                message=message,
+            )
+
+            return task.title if task else None
+
+        except Exception:
+
+            return None
 
     @staticmethod
     def _task_override(

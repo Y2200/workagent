@@ -31,6 +31,7 @@ class TaskTool(BaseTool):
     # action → 所需权限码
     PERMISSION_MAP = {
         "list": "task:view",
+        "detail": "task:view",
         "submit": "task:view",
         "complete": "task:view",
         "confirm": "task:view",
@@ -115,6 +116,41 @@ class TaskTool(BaseTool):
                     }
                     for t in tasks
                 ],
+            }
+
+        # 单个任务详情（任务上下文命中，如直接说任务名）
+        if action == "detail":
+
+            title = query or ""
+
+            task = task_service.get_employee_task_by_title(
+                tenant_id=context.tenant_id,
+                employee_id=context.user_id,
+                title=title,
+            )
+
+            if not task:
+
+                return {
+                    "status": "error",
+                    "message": f"未找到任务「{title}」",
+                }
+
+            return {
+                "action": "detail",
+                "task": {
+                    "id": task.id,
+                    "title": task.title,
+                    "status": task.status,
+                    "progress": task.progress,
+                    "priority": task.priority,
+                    "description": task.description,
+                    "deadline": (
+                        task.deadline.isoformat()
+                        if task.deadline
+                        else None
+                    ),
+                },
             }
 
         # 提交进度（AI 解析 → 待确认）
