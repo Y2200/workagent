@@ -125,6 +125,9 @@ class WXBizMsgCrypt:
         except ValueError:
 
             # 诊断：密钥错误时打印结构猜测，便于核对 EncodingAESKey
+            # cipher_head=密文首块hex（应随机）；plain_head=解密后明文首块hex
+            #   密钥正确时：16随机 + 00 00 00 xx + 3c786d6c...(<xml)
+            #   密钥错误时：纯随机
             try:
 
                 guess_len = struct.unpack(
@@ -146,8 +149,11 @@ class WXBizMsgCrypt:
                 guess = ""
 
             logging.getLogger(__name__).warning(
-                "企微解密 padding 失败: decoded_len=%d guess_len=%d head=%s",
+                "企微解密 padding 失败: decoded_len=%d "
+                "cipher_head=%s plain_head=%s guess_len=%d head=%s",
                 len(raw),
+                decoded[:16].hex(),
+                raw[:32].hex(),
                 guess_len,
                 guess[:40],
             )
