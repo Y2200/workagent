@@ -524,6 +524,105 @@ def test_tenant_inheritance():
     print("Part 5 ✅ 租户继承（任务 tenant 归属负责人，空租户拒绝）")
 
 
+# ======================
+# Part 6 平台管理员 Web 可见性（SUPER_ADMIN 不按租户过滤）
+# ======================
+
+def test_super_admin_visibility():
+
+    from work_agent.core.exceptions import TenantAccessDenied
+
+    admin = _user("admin")
+
+    admin_a = _user("admin_A")
+
+    admin_b = _user("admin_B")
+
+    emp_a = _user("A财务员工")
+
+    assert all(
+        u is not None
+        for u in (admin, admin_a, admin_b, emp_a)
+    ), "缺少测试用户"
+
+    # SUPER_ADMIN（tenant=''）给租户1员工建任务
+    task = task_service.create_task(
+        creator_tenant_id=admin.tenant_id,
+        title="平台可见性测试",
+        creator_id=admin.id,
+        employee_id=emp_a.id,
+        department="财务部",
+    )
+
+    assert task.tenant_id == "1"
+
+    # ① SUPER_ADMIN 不传租户 → 可见
+    all_tasks = task_service.list_tasks_for_web(
+        tenant_id=None,
+    )
+
+    assert any(
+        t.id == task.id
+        for t in all_tasks
+    ), "SUPER_ADMIN 应看到全部租户任务"
+
+    detail = task_service.get_task(
+        tenant_id=None,
+        task_id=task.id,
+    )
+
+    assert detail and detail.id == task.id
+
+    # ② 租户1管理员 → 可见
+    tenant1_tasks = task_service.list_tasks_for_web(
+        tenant_id=admin_a.tenant_id,
+    )
+
+    assert any(
+        t.id == task.id
+        for t in tenant1_tasks
+    ), "租户1管理员应看到本租户任务"
+
+    # ③ 租户2管理员 → 不可见（列表不含）
+    tenant2_tasks = task_service.list_tasks_for_web(
+        tenant_id=admin_b.tenant_id,
+    )
+
+    assert not any(
+        t.id == task.id
+        for t in tenant2_tasks
+    ), "租户2管理员不应看到租户1任务"
+
+    # ④ 租户2管理员访问详情 → 越权拒绝
+    try:
+
+        task_service.get_task(
+            tenant_id=admin_b.tenant_id,
+            task_id=task.id,
+        )
+
+        raise AssertionError(
+            "跨租户访问任务详情应被拒绝"
+        )
+
+    except TenantAccessDenied:
+
+        pass
+
+    # ⑤ 员工企微按自己租户可见
+    emp_tasks = task_service.list_employee_tasks(
+        tenant_id=emp_a.tenant_id,
+        employee_id=emp_a.id,
+    )
+
+    assert any(
+        t.id == task.id
+        for t in emp_tasks
+    ), "员工企微应可见任务"
+
+    print("Part 6 ✅ 平台管理员可见性（SUPER_ADMIN 全量/租户隔离/越权拒绝）")
+
+
 def test():
 
     _setup()
@@ -537,6 +636,8 @@ def test():
     test_isolation()
 
     test_tenant_inheritance()
+
+    test_super_admin_visibility()
 
 
 if __name__ == "__main__":

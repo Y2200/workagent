@@ -70,13 +70,21 @@ class TaskRepository:
     def list_by_tenant(
             self,
             db: Session,
-            tenant_id: str,
+            tenant_id: str | None = None,
             status: str | None = None
     ) -> list[Task]:
 
-        query = db.query(Task).filter(
-            Task.tenant_id == tenant_id
-        )
+        """
+        tenant_id=None 表示平台管理员，不做租户过滤（查看全部）
+        """
+
+        query = db.query(Task)
+
+        if tenant_id:
+
+            query = query.filter(
+                Task.tenant_id == tenant_id
+            )
 
         if status:
 

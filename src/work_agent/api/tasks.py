@@ -38,6 +38,29 @@ def _client_ip(request: Request) -> str | None:
     return None
 
 
+def _tenant_scope(
+        db: Session,
+        current_user: User
+) -> str | None:
+
+    """
+    平台管理员（SUPER_ADMIN）→ None（查看全部租户任务）
+    普通租户管理员 → 本租户隔离
+    """
+
+    if (
+        "SUPER_ADMIN"
+        in RBACService().get_role_codes(
+            db,
+            current_user.id,
+        )
+    ):
+
+        return None
+
+    return current_user.tenant_id
+
+
 def _enrich(
         db: Session,
         tasks
@@ -131,11 +154,11 @@ def list_tasks(
 ):
 
     """
-    任务列表（按当前租户隔离）
+    任务列表（SUPER_ADMIN 全量；租户管理员本租户）
     """
 
     tasks = task_service.list_tasks_for_web(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_tenant_scope(db, current_user),
         status=status,
     )
 
@@ -199,7 +222,8 @@ def create_task(
         )
 
     AuditService().log_operation(
-        tenant_id=current_user.tenant_id,
+        # 记录任务所属租户，而非创建者租户（创建者可能是平台管理员）
+        tenant_id=task.tenant_id,
         user_id=current_user.id,
         action="task.create",
         target_type="task",
@@ -233,7 +257,7 @@ def get_task(
     """
 
     task = task_service.get_task(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_tenant_scope(db, current_user),
         task_id=task_id,
     )
 
