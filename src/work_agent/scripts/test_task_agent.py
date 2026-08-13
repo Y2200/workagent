@@ -705,6 +705,64 @@ def test_task_context_routing():
     print("Part 7 ✅ 任务上下文路由（短任务名→detail，动作词不误判）")
 
 
+# ======================
+# Part 8 提交解析优化（提交=指令，任务名≠summary）
+# ======================
+
+def test_parse_optimization():
+
+    emp = _user("A财务员工")
+
+    task = task_service.create_task(
+        creator_tenant_id=emp.tenant_id,
+        title="测试督导任务",
+        employee_id=emp.id,
+        department="财务部",
+    )
+
+    # ① 兜底解析：只提交无具体内容 → "未提供具体完成内容"
+    parsed = task_service._fallback_parse(
+        "提交测试督导任务 完成30%",
+        task_titles=["测试督导任务"],
+    )
+
+    assert parsed["task_title"] == "测试督导任务", parsed
+
+    assert parsed["progress"] == 30, parsed
+
+    assert parsed["summary"] == "未提供具体完成内容", parsed
+
+    # ② 兜底解析：有具体内容 → summary 提取完成内容，不含任务名
+    parsed2 = task_service._fallback_parse(
+        "提交测试督导任务 完成30% 接口开发完成，数据库设计完成",
+        task_titles=["测试督导任务"],
+    )
+
+    assert "接口开发完成" in parsed2["summary"], parsed2
+
+    assert "测试督导任务" not in parsed2["summary"], parsed2
+
+    # ③ 完整提交：summary 不应含任务名（LLM 或兜底 + 清理 guard 双重保证）
+    result = task_service.submit_progress_feedback(
+        tenant_id=emp.tenant_id,
+        employee_id=emp.id,
+        content="提交测试督导任务 完成30%",
+    )
+
+    assert result["status"] == "awaiting_confirmation", result
+
+    summary = result["parsed"].get("summary", "")
+
+    assert "测试督导任务" not in summary, result["parsed"]
+
+    task_service.cancel_pending(
+        tenant_id=emp.tenant_id,
+        employee_id=emp.id,
+    )
+
+    print("Part 8 ✅ 提交解析优化（提交=指令，任务名≠summary）")
+
+
 def test():
 
     _setup()
@@ -722,6 +780,8 @@ def test():
     test_super_admin_visibility()
 
     test_task_context_routing()
+
+    test_parse_optimization()
 
 
 if __name__ == "__main__":
