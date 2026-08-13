@@ -17,7 +17,48 @@ import random
 import struct
 
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
+
+
+def _pkcs7_pad_32(
+        data: bytes
+) -> bytes:
+    """
+    PKCS7 填充到 32 字节整数倍（企业微信用 32 而非 AES 的 16）
+    """
+
+    pad_len = 32 - (len(data) % 32)
+
+    return data + bytes([pad_len]) * pad_len
+
+
+def _pkcs7_unpad_32(
+        data: bytes
+) -> bytes:
+    """
+    PKCS7 去填充（读末字节为填充长度，企业微信官方解码方式）
+    """
+
+    if not data:
+
+        raise ValueError(
+            "空明文无法去填充"
+        )
+
+    pad_len = data[-1]
+
+    if pad_len < 1 or pad_len > 32:
+
+        raise ValueError(
+            f"非法填充长度: {pad_len}"
+        )
+
+    if len(data) < pad_len:
+
+        raise ValueError(
+            "填充长度超过明文"
+        )
+
+    return data[:-pad_len]
 
 
 def _aes_key(
@@ -117,10 +158,7 @@ class WXBizMsgCrypt:
 
         try:
 
-            plain = unpad(
-                raw,
-                AES.block_size,
-            )
+            plain = _pkcs7_unpad_32(raw)
 
         except ValueError:
 
@@ -205,9 +243,6 @@ class WXBizMsgCrypt:
 
         return base64.b64encode(
             cipher.encrypt(
-                pad(
-                    content,
-                    AES.block_size,
-                )
+                _pkcs7_pad_32(content)
             )
         ).decode("utf-8")

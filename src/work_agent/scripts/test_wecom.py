@@ -117,8 +117,31 @@ def test_crypto():
 
         pass
 
+    # 企微 32 字节对齐填充（回归：pad 值 >16 必须可解，线上真实场景 pad=31）
+    from work_agent.wechat.crypto import (
+        _pkcs7_pad_32,
+        _pkcs7_unpad_32,
+    )
+
+    data = b"x" * 321  # 321 % 32 = 1 → pad 值 31（>16，旧 AES.block_size=16 会误报）
+
+    padded = _pkcs7_pad_32(data)
+
+    assert len(padded) == 352
+
+    assert padded[-1] == 31
+
+    assert _pkcs7_unpad_32(padded) == data
+
+    # 完整加密→解密往返，payload 长度触发 pad>16
+    long_xml = "<xml><Content>" + "财" * 120 + "</Content></xml>"
+
+    enc_long = crypto.encrypt(long_xml)
+
+    assert crypto.decrypt(enc_long) == long_xml
+
     print(
-        "Part A ✅ 加解密（官方向量/往返/验签/防篡改/跨corp/key长度）"
+        "Part A ✅ 加解密（官方向量/往返/验签/防篡改/跨corp/key长度/32对齐填充）"
     )
 
 
