@@ -560,3 +560,13 @@ Phase：任务督导 Phase 3
 最终方案：清只读；requirements.txt 手动补 apscheduler==3.11.3；requirements.prod.txt 由 `uv export --frozen --no-dev --no-hashes --no-emit-project` 重新生成（已含 apscheduler）
 是否增加测试：否（依赖文件变更，生产套件 + test_task_reminder 回归覆盖）
 ====================
+====================
+时间：2026-08-14
+Phase：任务督导 Phase 3（部署配置回归）
+文件：requirements.prod.txt
+问题：uv export 整体重生成覆盖了手工定制的生产依赖清单——torch==2.13.0+cpu 被改回 torch==2.13.0、16 个 CUDA-only 包（nvidia-*/triton）被加回、头部 CPU 构建说明注释被冲掉。Dockerfile 预装 CPU torch，坏版本导致每次 docker build 重下 ~2.5GB CUDA 包
+原因：requirements.prod.txt 是手工定制文件（uv export 后人工做 torch +cpu / CUDA 裁剪），整体重生成不保留人工调整
+修复：`git show` 取原始版本逐字节恢复，仅追加 apscheduler==3.11.3 / tzlocal==5.4.4 两处（含 tzdata via tzlocal）
+验证：`git diff 30b2aaa -- requirements.prod.txt` 仅 apscheduler/tzlocal 新增；torch==2.13.0+cpu 保留、nvidia/triton 为 0
+经验：requirements.prod.txt 属部署配置，加依赖应手工追加而非 uv export 整体重生成；若重生成必须重新应用手工裁剪
+====================
