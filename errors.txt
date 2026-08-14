@@ -550,3 +550,13 @@ Phase：任务督导第二轮
 修复：task_notifications 表 + NotificationService.send_task_created（企微主动推送，失败落库 failed 不影响任务创建）
 验证：test_task_agent Part 10/11
 ====================
+====================
+时间：2026-08-14
+Phase：任务督导 Phase 3
+文件：requirements.txt
+问题：写入依赖行报 EPERM（PermissionError 13），Edit/写入重命名被拒
+原因：requirements.txt 被设置 Windows 只读属性（attrib R），无法被覆盖
+解决过程：`attrib -R requirements.txt` 清除只读后正常写入
+最终方案：清只读；requirements.txt 手动补 apscheduler==3.11.3；requirements.prod.txt 由 `uv export --frozen --no-dev --no-hashes --no-emit-project` 重新生成（已含 apscheduler）
+是否增加测试：否（依赖文件变更，生产套件 + test_task_reminder 回归覆盖）
+====================
