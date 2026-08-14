@@ -44,6 +44,14 @@ class SupervisorAgent:
         按计划分派到专业 Agent
         """
 
+        # 闲聊/问候：直接友好回复（不进旧督导工作流）
+        if plan.kind == "chat":
+
+            return self._run_chat(
+                context,
+                plan,
+            )
+
         agent = self.registry.get_for_kind(
             plan.kind
         )
@@ -56,11 +64,42 @@ class SupervisorAgent:
                 message=message,
             )
 
-        # legacy 路径（督导/闲聊/未知）
+        # legacy 路径（督导/未知）
         return self._run_legacy(
             context,
             plan,
             message,
+        )
+
+
+    def _run_chat(
+            self,
+            context,
+            plan
+    ) -> AgentResult:
+
+        """
+        闲聊/问候：返回友好引导，零 LLM 成本、不依赖督导上下文
+        """
+
+        return AgentResult(
+            agent="chat",
+            response=(
+                "你好！我是企业智能助手。我可以：\n"
+                "• 查询企业制度（如「报销制度是什么」）\n"
+                "• 查看/提交任务进度（如「我的任务」「提交XX任务 完成50%」）\n"
+                "有什么可以帮您？"
+            ),
+            intent=(
+                plan.intent
+                if plan
+                else ""
+            ),
+            knowledge_sources=[],
+            permission_denied=False,
+            token_usage=0,
+            tools_called=[],
+            tool_calls=[],
         )
 
 

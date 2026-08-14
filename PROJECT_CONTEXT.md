@@ -33,6 +33,11 @@
 - **`/auth/me` 加 roles**：前端按权限过滤角色下拉
 - 测试：`scripts/test_user_management.py` 8 部分；回归 test_rbac / test_task_agent / 生产套件全绿；前端 build 通过
 
+## 企微链路排障（闲聊路由 + 督导 JSON 容错，已完成）
+- 现象：企微回复"系统繁忙"；`supervision_action.py:67` json.loads 崩（DeepSeek 对问候返回空/散文）
+- 修复：`core/utils` 加 `safe_parse_json`（剥围栏/平衡提取首个{} / default 兜底）+ `is_greeting`；`supervision_action`/`task_supervision` 改用容错解析 + 失败日志；planner 把 `SMALL_TALK`/问候 → `kind=chat`，supervisor 直接友好回复（问候不再进旧督导流）
+- 测试：`test_chat_routing.py` 5/5；回归 `test_task_agent` / `test_user_management` / 生产套件全绿
+
 ## 下一步
 1. **部署到服务器（含 Phase 3 + 用户管理）**：`git pull` → `deploy.sh` → `python -m work_agent.scripts.migrate_tasks` → `python -m work_agent.scripts.migrate_user_profile`（幂等，先建索引再部署）；`.env` 开 `TASK_REMINDER_ENABLED=true`；前端随 deploy 重新构建
 2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名；到点收督办提醒；Web 新建用户→登录→绑定企微→企微识别
