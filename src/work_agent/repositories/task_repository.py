@@ -207,6 +207,28 @@ class TaskRepository:
             .all()
         )
 
+    def list_remindable(
+            self,
+            db: Session
+    ) -> list[Task]:
+
+        """
+        每日督办平台扫描：全部租户未完成任务（pending/processing）且含截止日期
+
+        先例：list_by_tenant(tenant_id=None) 已支持平台管理员不按租户过滤。
+        返回任务自带 tenant_id，通知侧按 task.tenant_id 隔离（多租户铁律不变）。
+        """
+
+        return (
+            db.query(Task)
+            .filter(
+                Task.deadline.isnot(None),
+                Task.status.in_(["pending", "processing"]),
+            )
+            .order_by(Task.deadline.asc())
+            .all()
+        )
+
     # ======================
     # 提交记录
     # ======================

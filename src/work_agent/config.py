@@ -231,6 +231,21 @@ class Settings(BaseSettings):
     )
 
 
+    # ======================
+    # 任务自动督办（Phase 3）
+    # 默认关闭；生产 .env 置 TASK_REMINDER_ENABLED=true 开启每日企微提醒
+    # ======================
+
+    # 是否启用每日任务督办提醒
+    task_reminder_enabled: bool = False
+
+    # 每日提醒时间（HH:MM，服务器本地时区）
+    task_reminder_time: str = "09:00"
+
+    # 最低提醒风险等级：high / medium / low（只提醒达到该等级及以上的任务）
+    task_reminder_min_risk: str = "medium"
+
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

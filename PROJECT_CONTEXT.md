@@ -6,7 +6,7 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-13，WeCom 上线 + 任务督导 MVP+二轮优化 全部完成）
+# ⚡ 当前状态（2026-08-14，WeCom 上线 + 任务督导 MVP~Phase 3 全部完成）
 
 **代码状态**：本地 `master` = 远程 `origin/master` = `ec4b360`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
 
@@ -24,11 +24,12 @@
 - **Web**：`api/tasks.py` + `Tasks.vue`；权限 `task:view/create/manage`（seed_rbac）
 - **多租户原则**：task.tenant_id 归属负责人 employee；SUPER_ADMIN 全量/租户管理员隔离
 - 测试：`scripts/test_task_agent.py` 11 部分；生产套件 6/6+契约
+- **Phase 3 自动督办（已完成）**：`scheduler/task_scheduler.py`（APScheduler 每日 CronTrigger，main.py lifespan 启停）+ `services/task_reminder_service.py`（确定性风险判断：逾期/剩余天数+进度+优先级 → high/medium/low；模板文案；`scan_and_remind` 企微提醒员工，未绑定记 failed 不阻塞）+ `task_repository.list_remindable`（平台扫描未完成含截止任务）；配置 `TASK_REMINDER_ENABLED/TIME/MIN_RISK`；测试 `scripts/test_task_reminder.py` 7 部分；依赖 `apscheduler>=3.10,<4`
 
 ## 下一步
-1. **部署二轮优化到服务器**：`git pull` → `deploy.sh` → `migrate_tasks`（建 task_notifications 表，幂等）
-2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名
-3. 后续（未做）：APScheduler 自动督办提醒、任务统计/周报/邮件（6-2.txt Phase 3/4）、前端治理看板接入
+1. **部署到服务器（含 Phase 3）**：`git pull` → `deploy.sh` → `migrate_tasks`（幂等）；`requirements.prod.txt` 已含 apscheduler；`.env` 开 `TASK_REMINDER_ENABLED=true` 启用每日督办
+2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名；到点收督办提醒
+3. 后续（未做）：任务统计/周报/邮件（6-2.txt Phase 4）、前端治理看板接入
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 

@@ -27,6 +27,7 @@
 - **P6-1 Production Deployment 已完成**：`deploy/` 生产部署体系（compose/nginx/scripts/README）、Dockerfile、requirements.prod.txt、.env.example、CORS 配置化、`milvus_uri` 配置
 - **部署（服务器侧）**：按 `deploy/README.md` 在腾讯云执行；**阻塞项：milvus_store.py 连 Milvus 地址接线待批准**
 - **下一步**：milvus_store 接线批准、前端接入治理看板、企业微信正式接入、Celery（见 PROJECT_CONTEXT.md）
+- **任务督导 Phase 3 自动督办已完成**：APScheduler 每日扫描未完成任务 → 确定性风险判断（逾期/剩余天数+进度/优先级 → high/medium/low）→ 企微提醒员工（`scheduler/task_scheduler.py` + `services/task_reminder_service.py`；`TASK_REMINDER_ENABLED/TIME/MIN_RISK` 配置；测试 `test_task_reminder.py` 7 部分）
 - **测试状态**：28/28 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 

@@ -1,6 +1,8 @@
 import logging
 import sys
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -46,9 +48,35 @@ from work_agent.api.users import router as users_router
 from work_agent.api.tasks import router as tasks_router
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    """
+    FastAPI 生命周期：启动/停止每日任务督办调度器（Phase 3）
+
+    TASK_REMINDER_ENABLED=false 时 start_scheduler 返回 None（no-op）
+    """
+
+    from work_agent.scheduler.task_scheduler import (
+        start_scheduler,
+        stop_scheduler,
+    )
+
+    scheduler = start_scheduler()
+
+    try:
+
+        yield
+
+    finally:
+
+        stop_scheduler(scheduler)
+
+
 app = FastAPI(
     title="Enterprise Work Agent",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
 
