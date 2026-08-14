@@ -15,6 +15,7 @@ dependencies = [
     "langgraph==1.0.7",
     "loguru==0.7.3",
     "minio>=7.2",
+    "openpyxl>=3.1,<4",
     "psycopg2-binary>=2.9",
     "pydantic-settings==2.8.1",
     "PyJWT>=2.8",

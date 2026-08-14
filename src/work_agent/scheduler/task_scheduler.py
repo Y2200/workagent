@@ -20,7 +20,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from work_agent.config import settings
+from work_agent.services.email_service import email_service
 from work_agent.services.task_reminder_service import task_reminder_service
+from work_agent.services.task_report_service import task_report_service
 
 
 logger = logging.getLogger("work_agent.scheduler")
@@ -85,10 +87,107 @@ def _daily_reminder_job() -> None:
         )
 
 
+def _weekly_email_text(
+        report: dict
+) -> str:
+
+    """
+    周报摘要 → 邮件纯文本
+    """
+
+    lines = [
+        "任务周报",
+        "",
+        (
+            f"统计周期：{report['period']['start'][:10]} ~ "
+            f"{report['period']['end'][:10]}"
+        ),
+        "",
+    ]
+
+    s = report["summary"]
+
+    lines.append(
+        f"本周完成任务：{s['completed_this_week']} 个"
+    )
+
+    lines.append(
+        f"延期任务：{s['overdue']} 个"
+    )
+
+    lines.append(
+        f"高风险任务：{s['high_risk']} 个"
+    )
+
+    lines.append("")
+
+    lines.append("建议：")
+
+    for tip in report["suggestions"]:
+
+        lines.append(f"- {tip}")
+
+    return "\n".join(lines)
+
+
+def _weekly_report_job() -> None:
+
+    """
+    每周汇总周报：生成 Word → 邮件发送给配置收件人（失败只记日志）
+    """
+
+    try:
+
+        result = task_report_service.generate_weekly()
+
+        report = result["summary"]
+
+        logger.info(
+            "周报生成完成：%s",
+            report["summary"],
+        )
+
+        recipients = [
+            email.strip()
+            for email in settings.weekly_report_emails.split(",")
+            if email.strip()
+        ]
+
+        if not recipients:
+
+            logger.info(
+                "周报未配置收件人（WEEKLY_REPORT_EMAILS），跳过邮件发送"
+            )
+
+            return
+
+        text = _weekly_email_text(report)
+
+        for to in recipients:
+
+            outcome = email_service.send(
+                to=to,
+                subject="任务周报",
+                content=text,
+            )
+
+            logger.info(
+                "周报邮件 to=%s status=%s",
+                to,
+                outcome["status"],
+            )
+
+    except Exception:
+
+        logger.exception(
+            "周报生成/发送失败"
+        )
+
+
 def start_scheduler() -> BackgroundScheduler | None:
 
     """
-    启动每日督办调度；未启用时 no-op 返回 None（保证测试不误启动）
+    启动每日督办 + 每周周报调度；均未启用时 no-op 返回 None
     """
 
     global _scheduler
@@ -100,43 +199,78 @@ def start_scheduler() -> BackgroundScheduler | None:
 
         return _scheduler
 
-    if not settings.task_reminder_enabled:
+    if not (
+        settings.task_reminder_enabled
+        or settings.weekly_report_enabled
+    ):
 
         logger.info(
-            "任务督办调度未启用（TASK_REMINDER_ENABLED=false）"
+            "任务调度未启用（TASK_REMINDER_ENABLED / WEEKLY_REPORT_ENABLED 均关闭）"
         )
 
         return None
 
-    hour, minute = _parse_time(
-        settings.task_reminder_time,
-    )
-
     scheduler = BackgroundScheduler()
 
-    scheduler.add_job(
-        _daily_reminder_job,
-        trigger=CronTrigger(
-            hour=hour,
-            minute=minute,
-        ),
-        id="task_daily_reminder",
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=3600,
-        replace_existing=True,
-    )
+    if settings.task_reminder_enabled:
+
+        hour, minute = _parse_time(
+            settings.task_reminder_time,
+        )
+
+        scheduler.add_job(
+            _daily_reminder_job,
+            trigger=CronTrigger(
+                hour=hour,
+                minute=minute,
+            ),
+            id="task_daily_reminder",
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+            replace_existing=True,
+        )
+
+        logger.info(
+            "任务督办调度已启动：每日 %02d:%02d 企微提醒（最低风险 %s）",
+            hour,
+            minute,
+            settings.task_reminder_min_risk,
+        )
+
+    if settings.weekly_report_enabled:
+
+        wh, wm = _parse_time(
+            settings.weekly_report_time,
+        )
+
+        scheduler.add_job(
+            _weekly_report_job,
+            trigger=CronTrigger(
+                day_of_week=(
+                    settings.weekly_report_day
+                    or "mon"
+                ),
+                hour=wh,
+                minute=wm,
+            ),
+            id="weekly_report",
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+            replace_existing=True,
+        )
+
+        logger.info(
+            "任务周报调度已启动：每周 %s %02d:%02d",
+            settings.weekly_report_day,
+            wh,
+            wm,
+        )
 
     scheduler.start()
 
     _scheduler = scheduler
-
-    logger.info(
-        "任务督办调度已启动：每日 %02d:%02d 企微提醒（最低风险 %s）",
-        hour,
-        minute,
-        settings.task_reminder_min_risk,
-    )
 
     return scheduler
 

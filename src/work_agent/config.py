@@ -246,6 +246,42 @@ class Settings(BaseSettings):
     task_reminder_min_risk: str = "medium"
 
 
+    # ======================
+    # 邮件（Phase 4）
+    # SMTP 未配置或 EMAIL_ENABLED=false → 邮件功能静默跳过（不抛异常）
+    # ======================
+
+    smtp_host: str = ""
+
+    smtp_port: int = 465
+
+    smtp_username: str = ""
+
+    smtp_password: str = ""
+
+    # 发件人邮箱；留空默认 smtp_username
+    smtp_from: str = ""
+
+    email_enabled: bool = False
+
+
+    # ======================
+    # 任务周报（Phase 4）
+    # 每周生成一份汇总周报（Word）+ 定时邮件
+    # ======================
+
+    weekly_report_enabled: bool = False
+
+    # 每周生成时间（HH:MM，服务器本地时区）
+    weekly_report_time: str = "09:00"
+
+    # 星期几：mon / tue / wed / thu / fri / sat / sun
+    weekly_report_day: str = "mon"
+
+    # 周报收件人邮箱（逗号分隔；需 EMAIL_ENABLED=true 才发）
+    weekly_report_emails: str = ""
+
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

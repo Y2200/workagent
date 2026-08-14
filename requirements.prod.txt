@@ -92,6 +92,8 @@ distro==1.9.0
     # via
     #   langsmith
     #   openai
+et-xmlfile==2.0.0
+    # via openpyxl
 fastapi==0.115.12
     # via work-agent
 filelock==3.32.2
@@ -211,6 +213,8 @@ numpy==2.5.1 ; python_full_version >= '3.12'
     #   nvidia-cusparse
 openai==2.52.0
     # via langchain-openai
+openpyxl==3.1.5
+    # via work-agent
 orjson==3.11.9
     # via
     #   langgraph-sdk

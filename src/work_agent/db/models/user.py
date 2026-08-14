@@ -61,6 +61,12 @@ class User(Base):
         default=""
     )
 
+    # 邮箱（邮件通知用，Phase 4）
+    email: Mapped[str] = mapped_column(
+        String(128),
+        default=""
+    )
+
     role: Mapped[str] = mapped_column(
         String(32),
         default="员工"

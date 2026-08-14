@@ -38,10 +38,18 @@
 - 修复：`core/utils` 加 `safe_parse_json`（剥围栏/平衡提取首个{} / default 兜底）+ `is_greeting`；`supervision_action`/`task_supervision` 改用容错解析 + 失败日志；planner 把 `SMALL_TALK`/问候 → `kind=chat`，supervisor 直接友好回复（问候不再进旧督导流）
 - 测试：`test_chat_routing.py` 5/5；回归 `test_task_agent` / `test_user_management` / 生产套件全绿
 
+## 任务统计 / 周报 / 邮件（Phase 4，已完成）
+- **统计 API**：`GET /api/admin/task/stats`（overview/按部门/按员工/完成率/风险计数，风险复用 Phase3 确定性 `compute_risk`）+ 导出 `GET /api/admin/task/stats/export?format=xlsx|docx`（`task:manage` + 租户隔离）
+- **导出**：openpyxl 生成 xlsx + python-docx 生成 docx（`StreamingResponse` 首个文件下载）；**requirements.prod.txt 手工追加 openpyxl/et-xmlfile（未用 uv export）**
+- **周报**：`GET /api/admin/task/report/weekly`（JSON）+ `/weekly/export?format=docx`（Word 下载）；`task_report_service` 近 7 天完成/延期/高风险 + 确定性建议；APScheduler 每周定时生成 + 邮件发送 `WEEKLY_REPORT_EMAILS`
+- **邮件**：`email_service`（SMTP SSL/STARTTLS，默认关 EMAIL_ENABLED=false）；任务完成 → `send_task_completed_email`（收件人=创建者/主管）；`User.email` 字段 + 迁移；用户管理页加邮箱
+- **前端**：`TaskStats.vue` 任务统计页（overview 卡/部门/员工/风险表 + 导出/周报按钮 blob 下载）+ 路由/菜单
+- 测试：`scripts/test_task_stats.py` 6 部分；回归 test_task_agent 11/11、test_user_management 8/8、生产套件 6/6+契约、前端 build
+
 ## 下一步
-1. **部署到服务器（含 Phase 3 + 用户管理）**：`git pull` → `deploy.sh` → `python -m work_agent.scripts.migrate_tasks` → `python -m work_agent.scripts.migrate_user_profile`（幂等，先建索引再部署）；`.env` 开 `TASK_REMINDER_ENABLED=true`；前端随 deploy 重新构建
-2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名；到点收督办提醒；Web 新建用户→登录→绑定企微→企微识别
-3. 后续（未做）：任务统计/周报/邮件（6-2.txt Phase 4）、前端治理看板接入
+1. **部署到服务器（含 Phase 3 + 用户管理 + Phase 4）**：`git pull` → `deploy.sh` → `python -m work_agent.scripts.migrate_tasks` → `python -m work_agent.scripts.migrate_user_profile`（幂等，补 email 列）；`.env` 开 `TASK_REMINDER_ENABLED=true`、按需配 `SMTP_*`+`EMAIL_ENABLED=true`、`WEEKLY_REPORT_ENABLED=true`+`WEEKLY_REPORT_EMAILS`；前端随 deploy 重新构建
+2. 验证：Web 建任务 → 负责人企微收提醒；企微任务交互；到点收督办提醒；任务统计页/导出/周报；Web 新建用户（含邮箱）→登录→绑定企微→企微识别；配好 SMTP 后任务完成收邮件
+3. 后续（未做）：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 
@@ -408,6 +416,7 @@ python -m work_agent.scripts.test_health_monitoring       # P5-5-6 健康监控
 python -m work_agent.scripts.test_production_suite        # P5-5-7 生产套件（6 子套件 + 契约）
 python -m work_agent.scripts.test_task_reminder           # 任务自动督办（Phase 3）
 python -m work_agent.scripts.test_user_management         # 用户管理增强（新建/编辑/real_name/并发加固）
+python -m work_agent.scripts.test_task_stats              # 任务统计/周报/邮件（Phase 4）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000

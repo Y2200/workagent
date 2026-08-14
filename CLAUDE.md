@@ -29,6 +29,7 @@
 - **下一步**：milvus_store 接线批准、前端接入治理看板、企业微信正式接入、Celery（见 PROJECT_CONTEXT.md）
 - **任务督导 Phase 3 自动督办已完成**：APScheduler 每日扫描未完成任务 → 确定性风险判断（逾期/剩余天数+进度/优先级 → high/medium/low）→ 企微提醒员工（`scheduler/task_scheduler.py` + `services/task_reminder_service.py`；`TASK_REMINDER_ENABLED/TIME/MIN_RISK` 配置；测试 `test_task_reminder.py` 7 部分）
 - **用户管理增强（A/B/C）已完成**：Web 新建/编辑用户（`POST`/`PUT /api/admin/users`，user:manage + 多租户角色校验）+ `real_name` 显示名字段（可重复，username 仍唯一）+ 企微绑定并发加固（`users.wechat_user_id` 部分唯一索引 + `_auto_create_user` find-or-create）；迁移 `scripts/migrate_user_profile.py`（幂等）；测试 `test_user_management.py` 8 部分
+- **任务统计/周报/邮件（Phase 4）已完成**：`/api/admin/task/stats`（总览/部门/员工/风险）+ Excel/Word 导出（openpyxl+python-docx）+ 汇总周报（Word 下载 + APScheduler 每周邮件）+ 任务完成邮件（SMTP 默认关 `EMAIL_ENABLED`，`User.email` 字段）；前端 TaskStats 统计页；测试 `test_task_stats.py` 6 部分
 - **测试状态**：28/28 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 

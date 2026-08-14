@@ -632,7 +632,7 @@ class TaskService:
                     confirmed=True,
                 )
 
-                self.repository.update_progress(
+                updated = self.repository.update_progress(
                     db,
                     task.id,
                     progress,
@@ -643,6 +643,23 @@ class TaskService:
                     task.id,
                     employee_id,
                 )
+
+                # 任务完成 → 邮件通知创建者/主管（失败不影响主流程，Phase 4）
+                if updated and updated.status == "completed":
+
+                    try:
+
+                        from work_agent.services.notification_service import (
+                            notification_service,
+                        )
+
+                        notification_service.send_task_completed_email(
+                            updated
+                        )
+
+                    except Exception:
+
+                        pass
 
                 items.append(
                     {

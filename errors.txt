@@ -588,3 +588,12 @@ Phase：企微问答链路排障
 修复：① core/utils 加 safe_parse_json（剥围栏→平衡提取首个{}→default 兜底）+ is_greeting；supervision_action/task_supervision 改用 safe_parse_json + .get() 默认 + 失败打日志 ② planner 在 legacy 兜底前加 SMALL_TALK/is_greeting → kind=chat；supervisor 对 chat 直接友好回复不进旧工作流
 验证：test_chat_routing 5/5；回归 test_task_agent 11/11、test_user_management 8/8、生产套件 6/6+契约
 ====================
+====================
+时间：2026-08-14
+Phase：任务统计/周报/邮件（Phase 4）
+文件：api/tasks.py + scripts/test_task_stats.py
+问题：① ImportError: cannot import name 'StreamingResponse' from 'fastapi'；② 统计测试 total 不符（把其他套件遗留任务算入）
+原因：① StreamingResponse 应从 fastapi.responses 导入，fastapi 顶层不导出；② stats 按租户全量聚合，dev 库有其他套件遗留任务
+修复：① 改 from fastapi.responses import StreamingResponse；② 测试 _cleanup 清空租户1/2 任务 + 统计前清数据保证确定性
+验证：test_task_stats 6/6 全绿 + 回归全绿
+====================

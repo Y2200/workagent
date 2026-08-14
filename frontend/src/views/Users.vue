@@ -102,6 +102,9 @@
         <el-form-item label="部门">
           <el-input v-model="createForm.department" placeholder="如 财务部" />
         </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="createForm.email" placeholder="可选，用于任务完成邮件通知" />
+        </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="createForm.role" style="width: 100%">
             <el-option
@@ -137,6 +140,9 @@
         </el-form-item>
         <el-form-item label="部门">
           <el-input v-model="editForm.department" placeholder="如 财务部" />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="editForm.email" placeholder="可选，用于任务完成邮件通知" />
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="editForm.role" style="width: 100%">
@@ -208,6 +214,7 @@ const createForm = reactive({
   password: '',
   real_name: '',
   department: '',
+  email: '',
   role: 'USER',
   tenant_id: '',
   wechat_user_id: '',
@@ -219,6 +226,7 @@ const editForm = reactive({
   username: '',
   real_name: '',
   department: '',
+  email: '',
   role: 'USER',
 })
 
@@ -281,6 +289,7 @@ function openCreate() {
     password: '',
     real_name: '',
     department: '',
+    email: '',
     role: 'USER',
     tenant_id: '',
     wechat_user_id: '',
@@ -313,6 +322,7 @@ function openEdit(row) {
   editForm.username = row.username
   editForm.real_name = row.real_name || ''
   editForm.department = row.department || ''
+  editForm.email = row.email || ''
   const codes = row.roles || []
   editForm.role = codes.find((c) => ALL_ROLES.some((r) => r.code === c)) || 'USER'
   editDialogVisible.value = true
@@ -324,6 +334,7 @@ async function saveEdit() {
     const resp = await api.put(`/admin/users/${editForm.id}`, {
       real_name: editForm.real_name,
       department: editForm.department,
+      email: editForm.email,
       role: editForm.role,
     })
     ElMessage.success('已保存')
