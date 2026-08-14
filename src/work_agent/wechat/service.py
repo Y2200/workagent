@@ -50,6 +50,8 @@ def _auto_create_user(
     )
 
     # 懒加载避免循环依赖
+    from sqlalchemy.exc import IntegrityError
+
     from work_agent.services.auth_service import AuthService
 
     from work_agent.services.rbac_service import RBACService
@@ -60,17 +62,37 @@ def _auto_create_user(
 
         repo = UserRepository()
 
-        user = repo.create(
-            db,
-            username=f"wx_{wechat_user_id}",
-            password_hash=AuthService.hash_password(
-                secrets.token_urlsafe(32)
-            ),
-            department="",
-            role="员工",
-            wechat_user_id=wechat_user_id,
-            tenant_id=settings.wechat_default_tenant_id,
-        )
+        try:
+
+            user = repo.create(
+                db,
+                username=f"wx_{wechat_user_id}",
+                password_hash=AuthService.hash_password(
+                    secrets.token_urlsafe(32)
+                ),
+                department="",
+                role="员工",
+                real_name=name,
+                wechat_user_id=wechat_user_id,
+                tenant_id=settings.wechat_default_tenant_id,
+            )
+
+        except IntegrityError:
+
+            # 并发/企微重试竞态：他人已建号（撞 username/wechat 唯一）→
+            # 回滚后返回已存在者（find-or-create），不报错、不产生重复用户
+            db.rollback()
+
+            existing = repo.get_by_wechat_user_id(
+                db,
+                wechat_user_id,
+            )
+
+            if existing:
+
+                return existing
+
+            raise
 
         RBACService().assign_role(
             db,

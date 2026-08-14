@@ -143,6 +143,22 @@ class TaskRepository:
             .all()
         )
 
+    def count_by_employee(
+            self,
+            db: Session,
+            employee_id: int
+    ) -> int:
+
+        """
+        该员工全部租户下的任务数（用户改租户守卫用）
+        """
+
+        return (
+            db.query(Task)
+            .filter(Task.employee_id == employee_id)
+            .count()
+        )
+
     def update_progress(
             self,
             db: Session,
