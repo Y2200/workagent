@@ -176,6 +176,154 @@ class NotificationService:
 
             db.close()
 
+    def send_task_completed_email(
+            self,
+            task
+    ) -> dict:
+
+        """
+        任务完成邮件通知（收件人：创建者 + 主管，Phase 4）
+
+        EMAIL_ENABLED=false → 跳过不记录（避免噪音）
+        开启但收件人无邮箱 → 记 failed（channel=email）
+        """
+
+        from work_agent.config import settings
+
+        from work_agent.services.email_service import email_service
+
+        if not settings.email_enabled:
+
+            return {
+                "ok": False,
+                "status": "skipped",
+                "detail": "邮件未配置",
+            }
+
+        receiver_ids = {
+            task.creator_id,
+            task.manager_id,
+        } - {None}
+
+        if not receiver_ids:
+
+            return {
+                "ok": False,
+                "status": "skipped",
+                "detail": "无收件人（创建者/主管）",
+            }
+
+        from work_agent.repositories.user_repository import UserRepository
+
+        db = SessionLocal()
+
+        try:
+
+            repo = UserRepository()
+
+            recipients = []
+
+            for uid in receiver_ids:
+
+                user = repo.get_by_id(
+                    db,
+                    uid,
+                )
+
+                if user and user.email:
+
+                    recipients.append(
+                        user
+                    )
+
+        finally:
+
+            db.close()
+
+        if not recipients:
+
+            self.record(
+                tenant_id=task.tenant_id,
+                task_id=task.id,
+                receiver_id=task.creator_id or 0,
+                channel="email",
+                content="任务完成通知（收件人无邮箱）",
+                status="failed",
+            )
+
+            return {
+                "ok": False,
+                "status": "failed",
+                "detail": "收件人无邮箱",
+            }
+
+        content = self._task_completed_email_text(
+            task,
+            completed_at=datetime.now(),
+        )
+
+        ok_all = True
+
+        detail = ""
+
+        for user in recipients:
+
+            result = email_service.send(
+                to=user.email,
+                subject="员工任务完成通知",
+                content=content,
+            )
+
+            self.record(
+                tenant_id=task.tenant_id,
+                task_id=task.id,
+                receiver_id=user.id,
+                channel="email",
+                content=content,
+                status=result["status"],
+                sent_at=(
+                    datetime.now()
+                    if result["ok"]
+                    else None
+                ),
+            )
+
+            if not result["ok"]:
+
+                ok_all = False
+
+                detail = result.get(
+                    "detail",
+                    "",
+                )
+
+        return {
+            "ok": ok_all,
+            "status": (
+                "sent"
+                if ok_all
+                else "failed"
+            ),
+            "detail": detail,
+        }
+
+    @staticmethod
+    def _task_completed_email_text(
+            task,
+            *,
+            completed_at
+    ) -> str:
+
+        lines = [
+            "员工任务完成通知",
+            "",
+            f"任务：{task.title}",
+            f"完成度：{task.progress}%",
+            f"完成时间：{completed_at.strftime('%Y-%m-%d %H:%M')}",
+        ]
+
+        return "\n".join(lines)
+
     @staticmethod
     def _task_created_text(
             task

@@ -55,6 +55,8 @@ class UserAdminOut(BaseModel):
 
     department: str
 
+    email: str = ""
+
     role: str
 
     tenant_id: str
@@ -90,6 +92,8 @@ class CreateUserRequest(BaseModel):
 
     department: str = ""
 
+    email: str = ""
+
     role: str = "USER"
 
     tenant_id: str = ""
@@ -107,6 +111,8 @@ class UpdateUserRequest(BaseModel):
     real_name: str | None = None
 
     department: str | None = None
+
+    email: str | None = None
 
     role: str | None = None
 

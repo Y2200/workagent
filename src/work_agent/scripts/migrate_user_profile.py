@@ -26,6 +26,14 @@ def migrate():
             )
         )
 
+        # 1b) email 列（Phase 4 邮件通知，幂等）
+        conn.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS email VARCHAR(128) DEFAULT ''"
+            )
+        )
+
         # 2) 存量回填
         conn.execute(
             text(
@@ -73,7 +81,7 @@ def migrate():
             )
 
     print(
-        "迁移完成：users.real_name 列 + 企微绑定唯一约束"
+        "迁移完成：users.real_name / email 列 + 企微绑定唯一约束"
     )
 
 

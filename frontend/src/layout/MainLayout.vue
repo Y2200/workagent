@@ -31,6 +31,9 @@
         <el-menu-item index="/tasks">
           <span>任务管理</span>
         </el-menu-item>
+        <el-menu-item index="/task-stats">
+          <span>任务统计</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

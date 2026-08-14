@@ -112,6 +112,7 @@ class UserRepository:
             department: str = "",
             role: str = "员工",
             real_name: str = "",
+            email: str = "",
             wechat_user_id: str | None = None,
             tenant_id: str = ""
     ) -> User:
@@ -123,6 +124,7 @@ class UserRepository:
             department=department,
             role=role,
             real_name=real_name,
+            email=email,
             wechat_user_id=wechat_user_id
         )
 

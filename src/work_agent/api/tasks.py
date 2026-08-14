@@ -7,6 +7,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from work_agent.api.deps import get_db, require_permission
@@ -18,6 +19,8 @@ from work_agent.api.schemas import (
 )
 from work_agent.core.container import (
     notification_service,
+    task_report_service,
+    task_stats_service,
     task_service,
 )
 from work_agent.db.models import User
@@ -290,4 +293,137 @@ def get_task(
             TaskUpdateOut.model_validate(u)
             for u in updates
         ],
+    )
+
+
+# ======================
+# Phase 4：任务统计 / 导出 / 周报
+# ======================
+
+_EXPORT_TYPES = {
+    "xlsx": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "task_stats.xlsx",
+    ),
+    "docx": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "task_stats.docx",
+    ),
+}
+
+
+@router.get(
+    "/task/stats"
+)
+def task_stats(
+        current_user: User = Depends(
+            require_permission("task:manage")
+        ),
+        db: Session = Depends(get_db),
+):
+
+    """
+    任务统计（总览/按部门/按员工/风险任务；SUPER_ADMIN 全量，租户管理员本租户）
+    """
+
+    return task_stats_service.get_stats(
+        tenant_id=_tenant_scope(db, current_user),
+    )
+
+
+@router.get(
+    "/task/stats/export"
+)
+def task_stats_export(
+        format: str = Query(
+            "xlsx",
+            pattern="^(xlsx|docx)$",
+        ),
+        current_user: User = Depends(
+            require_permission("task:manage")
+        ),
+        db: Session = Depends(get_db),
+):
+
+    """
+    导出任务统计（Excel/Word）
+    """
+
+    stats = task_stats_service.get_stats(
+        tenant_id=_tenant_scope(db, current_user),
+    )
+
+    if format == "xlsx":
+
+        data = task_stats_service.to_xlsx(stats)
+
+    else:
+
+        data = task_stats_service.to_docx(stats)
+
+    content_type, filename = _EXPORT_TYPES[format]
+
+    return StreamingResponse(
+        iter([data]),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        },
+    )
+
+
+@router.get(
+    "/task/report/weekly"
+)
+def weekly_report(
+        current_user: User = Depends(
+            require_permission("task:manage")
+        ),
+        db: Session = Depends(get_db),
+):
+
+    """
+    本周任务周报（JSON 摘要）
+    """
+
+    return task_report_service.build_weekly_report(
+        tenant_id=_tenant_scope(db, current_user),
+    )
+
+
+@router.get(
+    "/task/report/weekly/export"
+)
+def weekly_report_export(
+        format: str = Query(
+            "docx",
+            pattern="^docx$",
+        ),
+        current_user: User = Depends(
+            require_permission("task:manage")
+        ),
+        db: Session = Depends(get_db),
+):
+
+    """
+    下载本周任务周报（Word）
+    """
+
+    data = task_report_service.generate_weekly(
+        tenant_id=_tenant_scope(db, current_user),
+    )["docx_bytes"]
+
+    return StreamingResponse(
+        iter([data]),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="weekly_report.docx"'
+            )
+        },
     )

@@ -148,6 +148,7 @@ def _user_out(
         username=user.username,
         real_name=user.real_name,
         department=user.department,
+        email=user.email,
         role=user.role,
         tenant_id=user.tenant_id,
         wechat_user_id=user.wechat_user_id,
@@ -313,6 +314,7 @@ def create_user(
             payload.real_name.strip()
             or username
         ),
+        email=payload.email.strip(),
         wechat_user_id=wechat_user_id,
         tenant_id=tenant_id,
     )
@@ -399,6 +401,10 @@ def update_user(
     if payload.department is not None:
 
         target.department = payload.department.strip()
+
+    if payload.email is not None:
+
+        target.email = payload.email.strip()
 
     if payload.role:
 

@@ -17,6 +17,9 @@ from work_agent.services.health_service import health_service
 from work_agent.services.task_service import task_service
 from work_agent.services.notification_service import notification_service
 from work_agent.services.task_reminder_service import task_reminder_service
+from work_agent.services.task_stats_service import task_stats_service
+from work_agent.services.task_report_service import task_report_service
+from work_agent.services.email_service import email_service
 
 
 rag_service = RAGService()
@@ -81,3 +84,11 @@ notification_service = notification_service
 
 # 任务自动督办单例（services/task_reminder_service.py 内定义，Phase 3）
 task_reminder_service = task_reminder_service
+
+# 邮件单例（services/email_service.py 内定义，Phase 4）
+email_service = email_service
+
+# 任务统计 / 周报单例（Phase 4）
+task_stats_service = task_stats_service
+
+task_report_service = task_report_service
