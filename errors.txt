@@ -570,3 +570,12 @@ Phase：任务督导 Phase 3（部署配置回归）
 验证：`git diff 30b2aaa -- requirements.prod.txt` 仅 apscheduler/tzlocal 新增；torch==2.13.0+cpu 保留、nvidia/triton 为 0
 经验：requirements.prod.txt 属部署配置，加依赖应手工追加而非 uv export 整体重生成；若重生成必须重新应用手工裁剪
 ====================
+====================
+时间：2026-08-14
+Phase：用户管理增强 A/B/C
+文件：scripts/test_user_management.py
+问题：① Part1 报 ArgumentError「Textual SQL expression should be explicitly declared as text()」；② Part6 find-or-create 失败 u1=None
+原因：① SQLAlchemy 2.0 要求 raw SQL 用 text() 包裹；② _auto_create_user 用的是 service 模块导入时绑定的 wecom_client，monkeypatch 需打在 work_agent.wechat.service.wecom_client 而非 work_agent.wechat.client.wecom_client（后者仅对函数内懒加载生效）
+修复：① 查询包 text()；② 改为 ws.wecom_client = FakeClient()
+验证：test_user_management 8/8 全绿
+====================

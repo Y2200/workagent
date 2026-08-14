@@ -26,6 +26,7 @@ from work_agent.core.container import (
     permission_service,
 )
 from work_agent.db.models import User
+from work_agent.services.rbac_service import RBACService
 
 
 router = APIRouter(
@@ -116,14 +117,27 @@ def login(
     response_model=UserOut
 )
 def me(
-        current_user: User = Depends(get_current_user)
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
 
     """
-    当前登录用户信息
+    当前登录用户信息（含 RBAC 角色码）
     """
 
-    return current_user
+    return UserOut(
+        id=current_user.id,
+        username=current_user.username,
+        department=current_user.department,
+        role=current_user.role,
+        roles=sorted(
+            RBACService().get_role_codes(
+                db,
+                current_user.id,
+            )
+        ),
+        created_at=current_user.created_at,
+    )
 
 
 @router.post(

@@ -31,6 +31,9 @@ class UserOut(BaseModel):
 
     role: str
 
+    # RBAC 角色码（SUPER_ADMIN 等），前端权限过滤用
+    roles: list[str] = []
+
     created_at: datetime
 
 
@@ -47,6 +50,8 @@ class UserAdminOut(BaseModel):
     id: int
 
     username: str
+
+    real_name: str = ""
 
     department: str
 
@@ -66,6 +71,47 @@ class UserAdminPage(BaseModel):
     items: list[UserAdminOut]
 
     total: int
+
+
+class CreateUserRequest(BaseModel):
+
+    """
+    Web 新建用户（user:manage）
+
+    role: SUPER_ADMIN / TENANT_ADMIN / DEPARTMENT_ADMIN / USER
+    tenant_id: SUPER_ADMIN 可设任意或空；租户管理员仅本租户
+    """
+
+    username: str
+
+    password: str
+
+    real_name: str = ""
+
+    department: str = ""
+
+    role: str = "USER"
+
+    tenant_id: str = ""
+
+    # 可选：创建即绑定企微 userid
+    wechat_user_id: str = ""
+
+
+class UpdateUserRequest(BaseModel):
+
+    """
+    编辑用户资料（None = 不修改）
+    """
+
+    real_name: str | None = None
+
+    department: str | None = None
+
+    role: str | None = None
+
+    # SUPER_ADMIN 可改租户；有任务的用户禁止改租户
+    tenant_id: str | None = None
 
 
 class WechatBindRequest(BaseModel):

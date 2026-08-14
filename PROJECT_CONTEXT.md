@@ -26,9 +26,16 @@
 - 测试：`scripts/test_task_agent.py` 11 部分；生产套件 6/6+契约
 - **Phase 3 自动督办（已完成）**：`scheduler/task_scheduler.py`（APScheduler 每日 CronTrigger，main.py lifespan 启停）+ `services/task_reminder_service.py`（确定性风险判断：逾期/剩余天数+进度+优先级 → high/medium/low；模板文案；`scan_and_remind` 企微提醒员工，未绑定记 failed 不阻塞）+ `task_repository.list_remindable`（平台扫描未完成含截止任务）；配置 `TASK_REMINDER_ENABLED/TIME/MIN_RISK`；测试 `scripts/test_task_reminder.py` 7 部分；依赖 `apscheduler>=3.10,<4`
 
+## 用户管理增强（A/B/C 已完成，待部署）
+- **Web 新建/编辑用户**：`POST /api/admin/users` + `PUT /api/admin/users/{id}`（`user:manage`；SUPER_ADMIN 全量/租户管理员本租户且不能越权提权；username/wechat 唯一 409、短密码 400、有任务禁改租户 409）；前端 Users.vue 新建/编辑按钮 + real_name 列 + 角色下拉按权限过滤
+- **real_name 显示名字段**：`users.real_name`（可重复，`username` 仍唯一登录名）；企微自动建号取企微 `name`；迁移 `scripts/migrate_user_profile.py` 幂等回填=username
+- **企微绑定并发加固**：`users.wechat_user_id` 部分唯一索引（1 企微号 ↔ 1 用户）+ `_auto_create_user` find-or-create（IntegrityError→回滚→返回已存在者，并发/重试不报错不重复）
+- **`/auth/me` 加 roles**：前端按权限过滤角色下拉
+- 测试：`scripts/test_user_management.py` 8 部分；回归 test_rbac / test_task_agent / 生产套件全绿；前端 build 通过
+
 ## 下一步
-1. **部署到服务器（含 Phase 3）**：`git pull` → `deploy.sh` → `migrate_tasks`（幂等）；`requirements.prod.txt` 已含 apscheduler；`.env` 开 `TASK_REMINDER_ENABLED=true` 启用每日督办
-2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名；到点收督办提醒
+1. **部署到服务器（含 Phase 3 + 用户管理）**：`git pull` → `deploy.sh` → `python -m work_agent.scripts.migrate_tasks` → `python -m work_agent.scripts.migrate_user_profile`（幂等，先建索引再部署）；`.env` 开 `TASK_REMINDER_ENABLED=true`；前端随 deploy 重新构建
+2. 验证：Web 建任务 → 负责人企微收提醒；企微「我的任务」/「提交XX 完成30%」/「提交我的所有任务完成20%」/直接说任务名；到点收督办提醒；Web 新建用户→登录→绑定企微→企微识别
 3. 后续（未做）：任务统计/周报/邮件（6-2.txt Phase 4）、前端治理看板接入
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
@@ -352,6 +359,7 @@ python -m work_agent.scripts.seed_tenants
 # 审计日志表字段迁移
 python -m work_agent.scripts.migrate_agent_logs
 python -m work_agent.scripts.migrate_agent_intelligence   # 智能体审计字段
+python -m work_agent.scripts.migrate_user_profile         # 用户 real_name + 企微绑定唯一索引（幂等）
 
 # RBAC 角色权限初始化
 python -m work_agent.scripts.seed_rbac
@@ -393,6 +401,8 @@ python -m work_agent.scripts.test_llm_cost                # P5-5-4 成本治理
 python -m work_agent.scripts.test_failure_recovery        # P5-5-5 故障恢复
 python -m work_agent.scripts.test_health_monitoring       # P5-5-6 健康监控
 python -m work_agent.scripts.test_production_suite        # P5-5-7 生产套件（6 子套件 + 契约）
+python -m work_agent.scripts.test_task_reminder           # 任务自动督办（Phase 3）
+python -m work_agent.scripts.test_user_management         # 用户管理增强（新建/编辑/real_name/并发加固）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
