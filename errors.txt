@@ -579,3 +579,12 @@ Phase：用户管理增强 A/B/C
 修复：① 查询包 text()；② 改为 ws.wecom_client = FakeClient()
 验证：test_user_management 8/8 全绿
 ====================
+====================
+时间：2026-08-14
+Phase：企微问答链路排障
+文件：agent/supervision_action.py + agent/supervision.py + agent/planner.py + agent/agents/supervisor.py + core/utils.py
+问题：企微回复"系统繁忙，请稍后再试"；生产日志 supervision_action.py:67 json.loads 崩溃（JSONDecodeError: Expecting value line 1 column 1）
+原因：① 问候/闲聊（如"你好啊"）被 planner 兜底路由 kind=legacy → 旧工作流无条件跑到 supervision_action，让 LLM 基于空督导上下文输出动作 JSON；DeepSeek 回空串/散文 → 裸 json.loads 崩。② 两个督导节点都是裸 json.loads，零容错
+修复：① core/utils 加 safe_parse_json（剥围栏→平衡提取首个{}→default 兜底）+ is_greeting；supervision_action/task_supervision 改用 safe_parse_json + .get() 默认 + 失败打日志 ② planner 在 legacy 兜底前加 SMALL_TALK/is_greeting → kind=chat；supervisor 对 chat 直接友好回复不进旧工作流
+验证：test_chat_routing 5/5；回归 test_task_agent 11/11、test_user_management 8/8、生产套件 6/6+契约
+====================

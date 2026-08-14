@@ -1,8 +1,12 @@
+import logging
+
 from work_agent.agent.state import AgentState
 from work_agent.agent.llm import get_llm
+from work_agent.core.utils import safe_parse_json
 from work_agent.prompts.loader import load_prompt
 
-import json
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -70,29 +74,60 @@ def task_supervision_node(
     )
 
 
-    data=json.loads(
-        result.content
+    content=(
+        result.content or ""
+    ).strip()
+
+
+    data=safe_parse_json(
+        content,
+        default={},
     )
+
+
+    if not data.get(
+        "supervision_status"
+    ):
+
+        logger.warning(
+            "task_supervision 解析失败，回退 normal。原始返回: %r",
+            content[:200],
+        )
 
 
     return {
 
         "supervision_status":
-            data["supervision_status"],
+            data.get(
+                "supervision_status",
+                "normal"
+            ),
 
 
         "task_supervision_result":
-            data["supervision_result"],
+            data.get(
+                "supervision_result",
+                "任务督导未解析，默认正常"
+            ),
 
 
         "supervision_action":
-            data["action"],
+            data.get(
+                "action",
+                "none"
+            ),
 
 
         "supervision_target":
-            data["target"],
+            data.get(
+                "target",
+                ""
+            ),
 
 
         "supervision_deadline":
-            data["deadline"]
+            data.get(
+                "deadline",
+                ""
+            )
     }

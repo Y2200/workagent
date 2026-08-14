@@ -6,7 +6,7 @@ from work_agent.agent.schemas import IntentType, PlanResult, PlanStep
 from work_agent.agent.tools.registry import tool_registry
 from work_agent.agent.tools.selector import tool_selector
 from work_agent.core.prompt_manager import prompt_manager
-from work_agent.core.utils import parse_json
+from work_agent.core.utils import is_greeting, parse_json
 
 
 class AgentPlanner:
@@ -229,12 +229,25 @@ class AgentPlanner:
                 reasoning=f"任务督导：执行 {action}",
             )
 
-        # 其他（督导/闲聊/未知）
+        # 闲聊/问候：直接友好回复，不进 legacy 督导流
+        if (
+            intent == IntentType.SMALL_TALK
+            or is_greeting(message)
+        ):
+
+            return PlanResult(
+                kind="chat",
+                intent=intent,
+                steps=[],
+                reasoning="闲聊/问候：直接友好回复",
+            )
+
+        # 其他（督导/未知）
         return PlanResult(
             kind="legacy",
             intent=intent,
             steps=[],
-            reasoning="督导/闲聊等路径：委托旧工作流",
+            reasoning="督导/未知路径：委托旧工作流",
         )
 
 
