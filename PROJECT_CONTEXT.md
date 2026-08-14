@@ -6,14 +6,25 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-14，WeCom 上线 + 任务督导 MVP~Phase 3 全部完成）
+# ⚡ 当前状态（2026-08-14，任务督导 Phase 4 + 用户管理 + 企微链路修复 全部完成）
 
-**代码状态**：本地 `master` = 远程 `origin/master` = `ec4b360`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
+**代码状态**：本地 `master` = 远程 `origin/master` = `87edaa4`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
 
 ## 已上线（生产服务器已部署）
 - 企微接入：回调 `api/wechat.py` + 手写 WXBizMsgCrypt（`wechat/crypto.py`）+ 统一 WeComClient（Redis token 缓存）+ 用户绑定 `api/users.py`/`Users.vue`
 - Milvus 租户元数据修复（`repair_milvus_metadata.py` + `update_document_metadata`）
 - 任务督导 MVP + 二轮优化（见下）
+
+## 最近完成（已推送 `87edaa4`，服务器部署验证中）
+- 任务督导 Phase 4：统计/周报/邮件（见下「任务统计 / 周报 / 邮件」）
+- 用户管理增强 A/B/C（见下）
+- 企微链路排障：闲聊路由 + 督导 JSON 容错（"你好"不再"系统繁忙"）
+- 邮件基础设施：SMTP + `User.email` + 任务完成邮件 + 每周周报（`EMAIL_ENABLED` 默认关）
+
+## ⏳ 明天继续（唤醒后优先）
+1. **服务器部署验证**：`git pull` → `bash deploy.sh` → `python -m work_agent.scripts.migrate_user_profile`（幂等补 email 列）→ `restart backend`；`.env` 开 `TASK_REMINDER_ENABLED=true`、按需配 `SMTP_*`+`EMAIL_ENABLED=true`、`WEEKLY_REPORT_ENABLED=true`+`WEEKLY_REPORT_EMAILS`
+2. 验证：任务统计页/导出/周报；配好 SMTP 后任务完成收邮件；企微「你好」返回引导
+3. 后续开发：前端治理看板接入（P5-5）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）
 
 ## 任务督导（已完成，全量回归绿）
 - **模型**：`tasks`/`task_updates`/`task_pending_updates`/`task_notifications` 四表（`db/models/task.py` + `scripts/migrate_tasks.py`）
