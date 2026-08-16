@@ -135,6 +135,28 @@ class AgentRuntime:
                 request_id=request_id,
             )
 
+            # ======================
+            # 统一加载会话记忆（chat_history）—— 所有 Agent 分支共享
+            # 失败静默 → 退化为无记忆（不破坏主链路）
+            # 只辅助 LLM 理解，不参与业务决策
+            # ======================
+
+            try:
+
+                from work_agent.services.conversation_memory_service import (
+                    conversation_memory_service,
+                )
+
+                context.chat_history = (
+                    conversation_memory_service.get_recent(
+                        context.conversation_id,
+                    )
+                )
+
+            except Exception:
+
+                context.chat_history = []
+
         # ======================
         # LLM 成本治理：预算拦截（在调用 LLM 之前）
         # ======================
@@ -356,6 +378,28 @@ class AgentRuntime:
             result["request_id"] = context.request_id
 
             result["conversation_id"] = context.conversation_id
+
+            # ======================
+            # 会话记忆：Agent 统一出口追加本轮 (user, assistant)
+            # 只记录最终用户可见消息；失败静默，不写历史不影响主链路
+            # ======================
+
+            try:
+
+                from work_agent.services.conversation_memory_service import (
+                    conversation_memory_service,
+                )
+
+                conversation_memory_service.append_round(
+                    context.conversation_id,
+                    message,
+                    result.get("response", ""),
+                    tenant_id=context.tenant_id,
+                    user_id=context.user_id,
+                )
+
+            except Exception:
+                pass
 
             return result
 
