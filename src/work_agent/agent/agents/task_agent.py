@@ -221,6 +221,41 @@ def _department_tasks_text(result: dict) -> str:
     return "\n".join(lines)
 
 
+def _summary_text(result: dict) -> str:
+
+    department = result.get("department", "")
+
+    summary = result.get("summary") or {}
+
+    completed = result.get("completed_tasks") or []
+
+    overdue = result.get("overdue_tasks") or []
+
+    risky = result.get("risky_tasks") or []
+
+    lines = [
+        f"{department or '本部门'}任务汇总：",
+        "",
+        f"完成任务：{summary.get('completed_this_week', 0)}",
+        f"延期任务：{summary.get('overdue', 0)}",
+        f"高风险任务：{summary.get('high_risk', 0)}",
+    ]
+
+    if risky:
+
+        lines.append("")
+        lines.append("重点关注：")
+
+        for t in risky[:5]:
+
+            lines.append(
+                f"- {t['title']}"
+                f"（进度{t['progress']}%，{t['risk_reason']}）"
+            )
+
+    return "\n".join(lines)
+
+
 def _notification_text(result: dict) -> str:
 
     # SMTP 未启用 → 明确提示（不走失败流程）
@@ -342,7 +377,11 @@ class TaskAgent(BaseAgent):
         return AgentResult(
             agent=self.name,
             response=response,
-            intent=IntentType.TASK_MANAGEMENT,
+            intent=(
+                plan.intent
+                if plan and plan.intent
+                else IntentType.QUERY_MY_TASK
+            ),
             knowledge_sources=[],
             permission_denied=(
                 tool_result.get("error") == "permission_denied"
@@ -436,6 +475,11 @@ class TaskAgent(BaseAgent):
         if action in ("send_wechat", "send_email"):
 
             return _notification_text(result)
+
+        # 部门任务汇总
+        if action == "summary":
+
+            return _summary_text(result)
 
         # 按员工查任务
         if action == "employee_tasks":

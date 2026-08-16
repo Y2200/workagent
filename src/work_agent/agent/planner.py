@@ -86,7 +86,7 @@ class AgentPlanner:
 
         # ======================
         # 任务状态/进度消息统一归 task
-        # （LLM 可能在 workflow_request / task_management 间摇摆，此处确定性归一）
+        # （LLM 可能在 workflow_request / task 意图间摇摆，此处确定性归一）
         # ======================
 
         if (
@@ -94,7 +94,7 @@ class AgentPlanner:
             and ("任务" in message or "进度" in message)
         ):
 
-            intent = IntentType.TASK_MANAGEMENT
+            intent = IntentType.QUERY_MY_TASK
 
         # ======================
         # 确定性路径
@@ -188,35 +188,42 @@ class AgentPlanner:
                 reasoning="风险分析：检索制度并评估风险",
             )
 
-        if intent == IntentType.TASK_MANAGEMENT:
+        # 员工查自己的任务（query_my_task）
+        if intent in (
+            IntentType.QUERY_MY_TASK,
+            IntentType.TASK_MANAGEMENT,  # 兼容别名
+        ):
 
             action = (
                 intent_result.entities.get("action")
                 or ""
             )
 
-            if action not in (
-                "list",
-                "detail",
-                "submit",
-                "submit_all",
-                "confirm",
-                "cancel",
-                "complete",
-                "department_tasks",
-                "employee_tasks",
-            ):
+            if action not in ("list", "detail"):
 
-                # LLM 未给出 action 时从消息推断（确定性兜底）
-                action = _infer_task_action(message)
+                action = _infer_query_action(message)
 
-            # 批量语义确定性强覆盖（LLM 可能返回 submit）
-            if (
-                "全部任务" in message
-                or "所有任务" in message
-            ):
+            return PlanResult(
+                kind="task",
+                intent=IntentType.QUERY_MY_TASK,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="task_tool",
+                        action=action,
+                        description="查询我的任务",
+                    ),
+                ],
+                reasoning=f"查询我的任务：执行 {action}",
+            )
 
-                action = "submit_all"
+        # 经理查员工/部门任务（query_employee_task）
+        if intent == IntentType.QUERY_EMPLOYEE_TASK:
+
+            action = (
+                intent_result.entities.get("action")
+                or "employee_tasks"
+            )
 
             return PlanResult(
                 kind="task",
@@ -226,23 +233,86 @@ class AgentPlanner:
                         step_id=1,
                         tool="task_tool",
                         action=action,
-                        description="任务督导",
+                        description="查询员工/部门任务",
                     ),
                 ],
-                reasoning=f"任务督导：执行 {action}",
+                reasoning=f"查询员工/部门任务：执行 {action}",
             )
 
-        # 任务发布（管理员，带确认）：解析 → 待确认草稿
-        if intent == IntentType.TASK_CREATE:
+        # 员工提交/确认/取消/完成进度（submit_task）
+        if intent == IntentType.SUBMIT_TASK:
+
+            action = (
+                intent_result.entities.get("action")
+                or ""
+            )
+
+            if action not in (
+                "submit",
+                "submit_all",
+                "confirm",
+                "cancel",
+                "complete",
+            ):
+
+                action = _infer_submit_action(message)
+
+            # 批量语义确定性强覆盖
+            if (
+                "全部任务" in message
+                or "所有任务" in message
+            ):
+
+                action = "submit_all"
 
             return PlanResult(
                 kind="task",
-                intent=intent,
+                intent=IntentType.SUBMIT_TASK,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="task_tool",
+                        action=action,
+                        description="提交/确认任务进度",
+                    ),
+                ],
+                reasoning=f"提交任务进度：执行 {action}",
+            )
+
+        # 经理发布任务（create_task，带确认）：解析 → 待确认草稿
+        if intent == IntentType.CREATE_TASK:
+
+            # 结构化 command（替代自由文本）：
+            # {"intent": "create_task", "command": {"type": "task.create",
+            #  "assignee_name": "...", "title": "...", "deadline": "..."}}
+            command = {
+                "intent": IntentType.CREATE_TASK,
+                "command": {
+                    "type": "task.create",
+                    "assignee_name": (
+                        intent_result.entities.get("employee_name")
+                        or ""
+                    ),
+                    "title": (
+                        intent_result.entities.get("title")
+                        or ""
+                    ),
+                    "deadline": (
+                        intent_result.entities.get("deadline_text")
+                        or ""
+                    ),
+                },
+            }
+
+            return PlanResult(
+                kind="task",
+                intent=IntentType.CREATE_TASK,
                 steps=[
                     PlanStep(
                         step_id=1,
                         tool="task_tool",
                         action="create",
+                        args={"command": command},
                         description="任务发布（解析 → 确认 → 创建）",
                         confirmation_required=True,
                     ),
@@ -250,8 +320,8 @@ class AgentPlanner:
                 reasoning="任务发布：解析并生成待确认草稿",
             )
 
-        # 主动提醒/督促（通知工具；发邮件等外部通信需确认）
-        if intent == IntentType.TASK_REMIND:
+        # 经理提醒/督促员工（remind_task；发邮件需确认）
+        if intent == IntentType.REMIND_TASK:
 
             remind_action = (
                 intent_result.entities.get("action")
@@ -273,6 +343,23 @@ class AgentPlanner:
                     ),
                 ],
                 reasoning="主动提醒：定向通知员工",
+            )
+
+        # 任务汇总/部门周报（summary_task）
+        if intent == IntentType.SUMMARY_TASK:
+
+            return PlanResult(
+                kind="task",
+                intent=intent,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="task_tool",
+                        action="summary",
+                        description="部门任务汇总",
+                    ),
+                ],
+                reasoning="任务汇总：生成部门任务总结",
             )
 
         # 闲聊/问候：直接友好回复，不进 legacy 督导流
@@ -372,12 +459,37 @@ class AgentPlanner:
         )
 
 
-def _infer_task_action(
+def _infer_query_action(
         message: str
 ) -> str:
 
     """
-    从消息推断任务动作（确定性兜底）
+    从消息推断查询任务动作（query_my_task 确定性兜底）
+    """
+
+    msg = message.strip()
+
+    # 查看指定员工/部门任务（query_employee_task 由意图分支单独处理）
+    if "部门任务" in msg or "部门情况" in msg:
+
+        return "department_tasks"
+
+    if (
+        re.search(r"(?:查看|查|看).+的\s*任务", msg)
+        and "我的任务" not in msg
+    ):
+
+        return "employee_tasks"
+
+    return "list"
+
+
+def _infer_submit_action(
+        message: str
+) -> str:
+
+    """
+    从消息推断提交任务动作（submit_task 确定性兜底）
     """
 
     msg = message.strip()
@@ -394,18 +506,6 @@ def _infer_task_action(
 
         return "submit_all"
 
-    if "部门任务" in msg or "部门情况" in msg:
-
-        return "department_tasks"
-
-    # 查看指定员工任务：「查看张三的任务」等（非"我的任务"）
-    if (
-        re.search(r"(?:查看|查|看).+的\s*任务", msg)
-        and "我的任务" not in msg
-    ):
-
-        return "employee_tasks"
-
     if "提交" in msg or "进度" in msg:
 
         return "submit"
@@ -414,7 +514,7 @@ def _infer_task_action(
 
         return "complete"
 
-    return "list"
+    return "submit"
 
 
 # 全局单例
