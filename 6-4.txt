@@ -1,0 +1,504 @@
+按照你现在已经实现的能力和业务方向，应该围绕：
+经理：发布任务、督办、查看员工任务、发送通知
+员工：提交任务结果、查询制度
+系统 Agent：自动检查任务、提醒、生成部门任务总结
+企业制度 RAG
+多部门权限隔离
+重新规划。
+Work-Agent 后续路线（Memory V1 完成后）
+当前状态：
+✅ 会话身份 conversation_id
+✅ conversation_messages
+✅ chat_history
+✅ RAG query rewrite
+✅ 多轮制度理解
+✅ 任务共享上下文  
+现在 Agent 已经：
+能理解用户连续对话
+
+下一阶段：
+让 Agent 能正确规划企业任务，并安全执行。
+
+Phase 7：任务 Planner 升级（最高优先级）
+当前问题
+现在流程：
+用户请求
+ ↓
+intent_router
+ ↓
+planner
+ ↓
+tool
+Planner 偏固定逻辑。
+例如：
+用户：
+帮我安排张三下周完成客户合同审核，并通知经理
+
+现在容易出现问题：
+创建任务？
+通知谁？
+当前用户有没有权限？
+“经理”是谁？
+通知是邮件还是企业微信？
+这些不能直接交给 LLM 猜。
+升级目标
+增加任务规划层：
+用户输入
+
+ ↓
+
+Task Planner
+
+ ↓
+
+任务目标分析
+
+ ↓
+
+执行步骤
+
+ ↓
+
+Policy检查
+
+ ↓
+
+Tool执行
+例如：
+用户：
+帮我安排张三下周完成客户合同审核，并通知经理
+
+Planner 输出：
+{
+ "goal":"完成客户合同审核任务安排",
+
+ "steps":[
+   {
+    "action":"create_task",
+    "assignee":"张三",
+    "deadline":"下周",
+    "title":"客户合同审核"
+   },
+   {
+    "action":"notify_manager",
+    "target":"当前部门经理"
+   }
+ ]
+}
+但是：
+Planner 只能提出计划。
+不能决定权限。
+后面交给 Policy。
+Phase 8：企业任务 Tool 可靠性升级
+现在最大风险：
+不是 Agent 不会回答。
+而是：
+Agent 调错工具。
+
+例如创建任务：
+不要：
+{
+"text":"安排张三审核合同"
+}
+升级：
+{
+"action":"create_task",
+
+"assignee_id":123,
+
+"title":"客户合同审核",
+
+"deadline":"2026-08-20",
+
+"creator_id":88
+}
+明确：
+谁创建
+给谁
+什么任务
+什么时间
+Tool 执行链升级
+现在：
+LLM
+ |
+Tool
+ |
+数据库
+升级：
+LLM Planner
+
+↓
+
+Tool Schema Validator
+
+↓
+
+Permission Check
+
+↓
+
+Business Rule Check
+
+↓
+
+Database
+
+↓
+
+Result
+例如：
+员工：
+帮我安排李四完成合同审核
+
+流程：
+Planner:
+create_task
+
+↓
+
+Permission:
+
+employee
+没有 task:create
+
+↓
+
+拒绝执行
+
+↓
+
+返回:
+您没有安排任务权限，可以提交申请
+Phase 9：Agent Workflow 编排（不做 LangGraph 重构）
+注意：
+不是推倒 Runtime。
+保持现在：
+runtime
+intent_router
+planner
+supervisor
+tool
+增加业务流程能力。
+变成：
+用户
+
+↓
+
+Intent
+
+↓
+
+Planner
+
+↓
+
+Supervisor
+
+      |
+      |
+ -----------------
+ |       |        |
+任务Tool  知识Tool  通知Tool
+
+↓
+
+Confirm
+
+↓
+
+完成
+例子符合 Work-Agent：
+经理发布任务
+用户：
+安排张三下周完成合同审核
+
+流程：
+识别:
+create_task
+
+↓
+
+检查:
+当前用户=经理
+
+↓
+
+权限:
+task:create
+
+↓
+
+创建任务
+
+↓
+
+返回任务编号
+员工提交任务
+用户：
+合同审核已经完成
+
+流程：
+识别:
+submit_task
+
+↓
+
+检查:
+任务属于本人
+
+↓
+
+更新任务状态
+
+↓
+
+通知经理
+Phase 10：企业 Knowledge Agent 增强
+现在：
+问题
+
+↓
+
+Milvus
+
+↓
+
+制度回答
+未来：
+Knowledge Agent 不只查文档。
+变成：
+                 Knowledge Agent
+
+              /        |        \
+
+         制度文档     任务数据     组织数据
+
+          Milvus       DB        用户关系
+例如：
+用户：
+张三可以申请这个流程吗？
+
+不能只查制度。
+需要：
+制度：
+经理可以申请合同审批
+
+
+组织：
+张三职位=员工
+
+
+权限：
+员工没有审批权限
+
+最后回答：
+张三当前不能申请该流程，需要经理提交。
+
+Phase 11：主动任务 Agent
+你现在已有：
+scan_and_remind
+reminder
+digest
+下一步不是重新做提醒。
+而是让 Agent 参与判断。
+现在：
+定时扫描
+
+↓
+
+提醒
+升级：
+定时扫描
+
+↓
+
+Agent分析
+
+↓
+
+决定动作
+
+↓
+
+执行
+例如：
+系统发现：
+张三任务：
+合同审核
+
+截止日期:
+明天
+
+状态:
+未开始
+Agent判断：
+风险:
+高
+
+原因:
+距离截止1天
+
+动作:
+提醒张三
+抄送经理
+周报
+系统 Agent：
+每周：
+任务数据
+
+↓
+
+分析
+
+↓
+
+部门总结
+
+↓
+
+发送经理
+内容：
+本周部门任务:
+
+完成:
+20
+
+延期:
+3
+
+未开始:
+5
+
+风险:
+合同审核任务
+Phase 12：企业 Agent 生产能力
+Agent Trace
+记录：
+用户请求
+
+↓
+
+识别意图
+
+↓
+
+Planner计划
+
+↓
+
+权限判断
+
+↓
+
+工具调用
+
+↓
+
+结果
+
+↓
+
+最终回复
+方便排查：
+为什么 Agent 给张三发了错误通知。
+Agent Evaluation
+重点测试：
+任务创建
+100条：
+给员工安排任务
+
+检查：
+创建正确率
+参数正确率
+权限测试
+例如：
+员工：
+给李四安排任务
+
+必须：
+拒绝。
+制度问答
+测试：
+检索准确率
+多轮理解
+推荐顺序（调整版）
+现在
+ |
+ | 已完成
+ v
+
+Memory V1
+会话理解
+
+ |
+
+ v
+
+⭐⭐⭐⭐⭐
+Phase 7
+Task Planner + Policy设计
+
+ |
+
+ v
+
+⭐⭐⭐⭐⭐
+Phase 8
+Tool Schema + Validator
+
+ |
+
+ v
+
+⭐⭐⭐⭐
+Phase 9
+任务 Workflow
+
+ |
+
+ v
+
+⭐⭐⭐⭐
+Phase 10
+Knowledge Agent增强
+
+ |
+
+ v
+
+⭐⭐⭐
+Phase 11
+主动任务 Agent
+
+ |
+
+ v
+
+⭐⭐⭐
+Phase 12
+Trace + Evaluation
+最终目标
+你的 Work-Agent 路线不是：
+ChatGPT + RAG
+
+而是：
+Level 1
+企业问答机器人
+        ✅
+
+Level 2
+制度 RAG Agent
+        ✅
+
+Level 3
+有记忆任务 Agent
+        ✅ 当前
+
+Level 4
+权限控制 + 规划执行 Agent
+        下一步
+
+Level 5
+主动管理型企业 Agent
+        后续
+这个版本和你现在的 Work-Agent 业务模型一致，不引入无关场景。你可以直接发给 Claude 作为下一阶段规划

@@ -80,12 +80,22 @@ def test():
 
     assert active is not None
 
-    assert active.version == "1.0"
+    # 版本与 metadata 一致（动态校验，版本 bump 无需改测试）
+    from work_agent.prompts.metadata import PROMPT_METADATA
+
+    expected_version = PROMPT_METADATA.get(
+        TEST_PROMPT,
+        {},
+    ).get("version", "")
+
+    assert active.version == expected_version, (
+        f"期望 {expected_version}，实际 {active.version}"
+    )
 
     # PromptManager 解析到 DB active 版本（内容与文件一致）
     loaded = prompt_manager.load(TEST_PROMPT)
 
-    assert loaded["version"] == "1.0", loaded["version"]
+    assert loaded["version"] == expected_version, loaded["version"]
 
     assert loaded["content"] == active.content, "应解析到 DB 版本"
 
@@ -104,7 +114,7 @@ def test():
 
     assert draft["status"] == "draft", draft
 
-    assert draft["version"] == "1.1", draft["version"]
+    assert draft["version"] == "1.2", draft["version"]
 
     approved = prompt_governance_service.approve(
         name=TEST_PROMPT,
@@ -127,7 +137,7 @@ def test():
     # 激活后 PromptManager 立即解析新版本（缓存已清）
     reloaded = prompt_manager.load(TEST_PROMPT)
 
-    assert reloaded["version"] == "1.1", reloaded["version"]
+    assert reloaded["version"] == "1.2", reloaded["version"]
 
     assert reloaded["content"] == DRAFT_CONTENT, reloaded["content"]
 
@@ -139,17 +149,17 @@ def test():
 
     rollback = prompt_governance_service.activate(
         name=TEST_PROMPT,
-        version="1.0",
+        version="1.1",
         updated_by="admin",
         audit_tenant_id="1",
         audit_user_id=1,
     )
 
-    assert rollback["version"] == "1.0", rollback
+    assert rollback["version"] == "1.1", rollback
 
     rolled = prompt_manager.load(TEST_PROMPT)
 
-    assert rolled["version"] == "1.0", rolled["version"]
+    assert rolled["version"] == "1.1", rolled["version"]
 
     # 1.1 已 deprecated
     history = prompt_governance_service.list_history(TEST_PROMPT)
@@ -159,9 +169,9 @@ def test():
         for item in history
     }
 
-    assert status_map["1.1"] == "deprecated", status_map
+    assert status_map["1.2"] == "deprecated", status_map
 
-    print("场景3 ✅ 回滚（1.0 重新激活，1.1 deprecated）")
+    print("场景3 ✅ 回滚（1.1 重新激活，1.2 deprecated）")
 
     # ======================
     # 场景4：审计落库
@@ -171,7 +181,7 @@ def test():
 
     prompt_governance_service.activate(
         name=TEST_PROMPT,
-        version="1.1",
+        version="1.2",
         updated_by="admin",
         audit_tenant_id="1",
         audit_user_id=1,
@@ -205,7 +215,7 @@ def test():
         tenant_id="",
     )
 
-    assert platform_active.version == "1.1", platform_active.version
+    assert platform_active.version == "1.2", platform_active.version
 
     # 租户 A/B 历史互不干扰
     history_a = prompt_governance_service.list_history(

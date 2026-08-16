@@ -40,7 +40,8 @@ class AgentRuntime:
             intent_router: IntentRouter | None = None,
             supervisor=None,
             planner=None,
-            config_service=None
+            config_service=None,
+            policy_service=None
     ):
 
         self.intent_router = intent_router or IntentRouter()
@@ -50,6 +51,17 @@ class AgentRuntime:
         self.planner = planner or agent_planner
 
         self.config_service = config_service
+
+        # 企业任务决策层（Phase 7A）：意图/计划级前置 RBAC
+        if policy_service is None:
+
+            from work_agent.agent.policy import (
+                policy_service as _policy_service,
+            )
+
+            policy_service = _policy_service
+
+        self.policy_service = policy_service
 
 
     def execute(
@@ -241,12 +253,54 @@ class AgentRuntime:
             )
 
             # ======================
+            # Policy Decision Layer（企业任务决策层，Phase 7A）
+            # 意图/计划级前置 RBAC；双保险（Tool 层 check_permission 保留）
+            # ======================
+
+            with tracer.span("policy", component="policy"):
+
+                decision = self.policy_service.evaluate(
+                    intent=intent_result.intent,
+                    plan=plan,
+                    context=context,
+                )
+
+                tracer.add_attributes(
+                    policy_allowed=decision.allowed,
+                    policy_denied=len(decision.denied),
+                )
+
+            # ======================
             # Supervisor → 专业 Agent → Tool
             # ======================
 
             with tracer.span("supervisor", component="supervisor"):
 
-                if disabled:
+                if not decision.allowed:
+
+                    # 策略拒绝：不执行 Agent/Tool，返回明确拒绝
+                    message_text = decision.message
+
+                    if decision.redirect:
+
+                        message_text = (
+                            message_text
+                            + "\n"
+                            + decision.redirect
+                        )
+
+                    result = {
+                        "response": message_text,
+                        "permission_denied": True,
+                        "token_usage": 0,
+                        "knowledge_sources": [],
+                        "agent": "policy_center",
+                        "plan_kind": plan.kind,
+                        "tools_called": [],
+                        "tool_calls": [],
+                    }
+
+                elif disabled:
 
                     # 治理拦截：配置中心停用工具，返回明确消息
                     result = {

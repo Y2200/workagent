@@ -40,6 +40,13 @@ class AgentContext:
         default_factory=set
     )
 
+    # System Agent 身份（Phase 7A）：is_system=True 跳过用户角色校验，
+    # 但执行 System Permission Check（system:scan/task:remind/report:send）
+    is_system: bool = False
+
+    # 多部门隔离预留（Phase 7A）：department_id 外键，当前 User 无该列恒空
+    department_id: str = ""
+
     conversation_id: str = ""
 
     # 会话记忆（P2）：最近 N 轮 LangChain BaseMessage（运行态）
@@ -69,7 +76,9 @@ class AgentContext:
             conversation_id: str | None = None,
             model_name: str = "",
             agent_version: str = "",
-            request_id: str | None = None
+            request_id: str | None = None,
+            is_system: bool = False,
+            department_id: str = ""
     ) -> "AgentContext":
 
         """
@@ -77,6 +86,7 @@ class AgentContext:
 
         request_id 由调用方注入（与审计/追踪对齐），缺省自动生成
         role_codes 由 Runtime 注入（RBAC 角色码，部门作用域校验用）
+        is_system 由 System Agent 链路注入（Phase 7A）
         """
 
         return cls(
@@ -92,6 +102,8 @@ class AgentContext:
             role_codes=set(
                 role_codes or []
             ),
+            is_system=is_system,
+            department_id=department_id,
             conversation_id=conversation_id or str(uuid4()),
             channel=channel,
             model_name=model_name,
