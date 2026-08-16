@@ -146,6 +146,57 @@ def _confirmation_text(task: dict, parsed: dict) -> str:
     return "\n".join(lines)
 
 
+def _department_tasks_text(result: dict) -> str:
+
+    department = result.get("department", "")
+
+    tasks = result.get("tasks", [])
+
+    if not tasks:
+
+        return f"{department or '该部门'}暂无任务。"
+
+    lines = [
+        f"{department or '本部门'}任务情况：",
+    ]
+
+    # 按执行人分组汇总
+    by_employee: dict[str, list] = {}
+
+    for t in tasks:
+
+        emp = t.get("employee") or str(t.get("id"))
+
+        by_employee.setdefault(emp, []).append(t)
+
+    for emp, emp_tasks in by_employee.items():
+
+        completed = sum(
+            1
+            for t in emp_tasks
+            if t["status"] == "completed"
+        )
+
+        active = len(emp_tasks) - completed
+
+        risky = sum(
+            1
+            for t in emp_tasks
+            if t["status"] in ("pending", "processing")
+            and (
+                t.get("priority") == "high"
+                or t.get("deadline") is not None
+            )
+        )
+
+        lines.append(
+            f"{emp}：共{len(emp_tasks)}个 完成{completed} "
+            f"进行中{active} 风险{risky}"
+        )
+
+    return "\n".join(lines)
+
+
 class TaskAgent(BaseAgent):
 
     """
@@ -236,6 +287,37 @@ class TaskAgent(BaseAgent):
 
             return result.get("message", "操作失败")
 
+        # 任务发布（解析 → 待确认）
+        if action == "create":
+
+            if result.get("status") == "awaiting_confirmation":
+
+                return result.get(
+                    "message",
+                    "已生成任务草稿，请确认。",
+                )
+
+            if result.get("status") == "need_info":
+
+                return result.get(
+                    "message",
+                    "请提供任务名称和执行人。",
+                )
+
+            if result.get("status") == "employee_not_found":
+
+                return result.get(
+                    "message",
+                    "未找到执行人。",
+                )
+
+            return result.get("message", "任务发布处理完成")
+
+        # 按部门查任务
+        if action == "department_tasks":
+
+            return _department_tasks_text(result)
+
         # 查看任务
         if action == "list":
 
@@ -280,6 +362,11 @@ class TaskAgent(BaseAgent):
         # 确认
         if action == "confirm":
 
+            # 任务创建确认完成
+            if result.get("status") == "task_created":
+
+                return result.get("message", "任务已创建。")
+
             if result.get("status") == "confirmed":
 
                 return _confirmed_text(result)
@@ -290,6 +377,10 @@ class TaskAgent(BaseAgent):
 
         # 取消
         if action == "cancel":
+
+            if result.get("status") == "cancelled_create":
+
+                return result.get("message", "已取消任务创建。")
 
             if result.get("status") == "cancelled":
 

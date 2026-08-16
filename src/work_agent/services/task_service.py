@@ -748,6 +748,653 @@ class TaskService:
             db.close()
 
     # ======================
+    # 任务创建草稿（Enterprise Agent Phase 3，带确认）
+    # ======================
+
+    def preview_create_task(
+            self,
+            *,
+            creator_id: int,
+            creator_tenant_id: str,
+            content: str
+    ) -> dict:
+
+        """
+        解析任务创建消息 → 生成待确认草稿（不落正式表）
+
+        解析职责划分（用户要求）：
+        - 执行人：DB 确定性查询（UserRepository.search_by_name），LLM 不负责
+        - 截止时间：代码规则优先（_parse_deadline_text）
+        - LLM 仅补充描述/标题/优先级字段（prompt task_create_parse）
+
+        返回：
+            awaiting_confirmation / need_info / employee_not_found
+        """
+
+        if not content or not content.strip():
+
+            return {
+                "status": "need_info",
+                "message": "请提供任务信息，例如「给张三安排客户系统测试任务，下周五完成」",
+                "missing": ["title", "employee_name"],
+            }
+
+        parsed = self._parse_create_message(content)
+
+        title = (parsed.get("title") or "").strip()
+
+        employee_name = (parsed.get("employee_name") or "").strip()
+
+        deadline_text = (parsed.get("deadline_text") or "").strip()
+
+        # 1. 缺关键字段 → 追问
+        missing = []
+
+        if not title:
+            missing.append("title")
+
+        if not employee_name:
+            missing.append("employee_name")
+
+        if missing:
+
+            return {
+                "status": "need_info",
+                "missing": missing,
+                "parsed": parsed,
+                "message": (
+                    "我需要补充："
+                    + ("任务名称；" if "title" in missing else "")
+                    + ("执行人；" if "employee_name" in missing else "")
+                    + "请补充后继续。"
+                ),
+            }
+
+        # 2. 执行人 DB 确定性解析
+        from work_agent.core.container import user_service
+
+        users = user_service.search_by_name(
+            keyword=employee_name,
+            tenant_id=(
+                creator_tenant_id
+                if creator_tenant_id
+                else ""
+            ),
+        )
+
+        if not users:
+
+            return {
+                "status": "employee_not_found",
+                "message": f"未找到员工「{employee_name}」，请确认姓名",
+                "parsed": parsed,
+            }
+
+        if len(users) > 1:
+
+            return {
+                "status": "employee_not_found",
+                "message": (
+                    f"「{employee_name}」匹配到多个员工，"
+                    "请补充更完整姓名"
+                ),
+                "parsed": parsed,
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "real_name": u.real_name or u.username,
+                        "department": u.department or "",
+                    }
+                    for u in users
+                ],
+            }
+
+        employee = users[0]
+
+        # 3. 截止时间代码规则优先
+        deadline = self._parse_deadline_text(deadline_text)
+
+        # 4. 落草稿（在途唯一）
+        db = SessionLocal()
+
+        try:
+
+            pending = self.repository.upsert_pending_create(
+                db,
+                creator_id=creator_id,
+                creator_tenant_id=creator_tenant_id,
+                employee_id=employee.id,
+                title=title,
+                description=parsed.get("description") or "",
+                department=employee.department or "",
+                deadline=deadline,
+                priority=parsed.get("priority") or "normal",
+                raw_message=content,
+                parsed={
+                    "employee_name": employee_name,
+                    "deadline_text": deadline_text,
+                    "deadline_parsed": bool(deadline),
+                },
+            )
+
+        finally:
+
+            db.close()
+
+        draft = {
+            "employee_id": employee.id,
+            "employee_name": employee.real_name or employee.username,
+            "department": employee.department or "",
+            "title": title,
+            "description": parsed.get("description") or "",
+            "deadline": (
+                deadline.isoformat()
+                if deadline
+                else None
+            ),
+            "deadline_text": deadline_text,
+            "priority": parsed.get("priority") or "normal",
+        }
+
+        return {
+            "status": "awaiting_confirmation",
+            "message": (
+                f"我识别到任务：\n"
+                f"执行人：{draft['employee_name']}\n"
+                f"任务：{draft['title']}\n"
+                + (
+                    f"截止时间：{deadline_text or '未确定'}\n"
+                )
+                + f"回复「确认」创建，或「取消」放弃。"
+            ),
+            "draft": draft,
+            "pending_id": pending.id,
+        }
+
+    def confirm_pending_create(
+            self,
+            *,
+            creator_id: int
+    ) -> dict | None:
+
+        """
+        确认创建在途草稿 → create_task 落库（多租户铁律：tenant 归执行人）
+
+        无在途草稿返回 None（task_tool 将回退到进度确认）
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            pending = self.repository.get_active_pending_create(
+                db,
+                creator_id,
+            )
+
+            if not pending:
+                return None
+
+            if not pending.employee_id or not pending.title:
+
+                self.repository.mark_pending_create(
+                    db,
+                    pending,
+                    "cancelled",
+                )
+
+                return {
+                    "status": "error",
+                    "message": "草稿缺少执行人或任务名，已取消",
+                }
+
+            # create_task 内部再查一次执行人（含租户归属）
+            task = self.create_task(
+                creator_tenant_id=pending.creator_tenant_id,
+                title=pending.title,
+                description=pending.description,
+                creator_id=pending.creator_id,
+                employee_id=pending.employee_id,
+                department=pending.department or "",
+                deadline=pending.deadline,
+                priority=pending.priority,
+            )
+
+            # 归档草稿（保留历史，允许再建新草稿）
+            self.repository.mark_pending_create(
+                db,
+                pending,
+                "confirmed",
+            )
+
+            return {
+                "status": "task_created",
+                "task": self._task_dict(task),
+                "message": (
+                    f"任务已创建：{task.title}，"
+                    "已通知负责人。"
+                ),
+            }
+
+        except ValueError as exc:
+
+            return {
+                "status": "error",
+                "message": str(exc),
+            }
+
+        finally:
+
+            db.close()
+
+    def cancel_pending_create(
+            self,
+            *,
+            creator_id: int
+    ) -> dict | None:
+
+        """
+        取消在途创建草稿；无草稿返回 None
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            pending = self.repository.get_active_pending_create(
+                db,
+                creator_id,
+            )
+
+            if not pending:
+                return None
+
+            self.repository.mark_pending_create(
+                db,
+                pending,
+                "cancelled",
+            )
+
+            return {
+                "status": "cancelled_create",
+                "message": "已取消任务创建。",
+            }
+
+        finally:
+
+            db.close()
+
+    def get_active_create_draft(
+            self,
+            *,
+            creator_id: int
+    ) -> dict | None:
+
+        """
+        查询在途创建草稿（task_agent 展示用）
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            pending = self.repository.get_active_pending_create(
+                db,
+                creator_id,
+            )
+
+            if not pending:
+                return None
+
+            return {
+                "id": pending.id,
+                "title": pending.title,
+                "employee_id": pending.employee_id,
+                "deadline": (
+                    pending.deadline.isoformat()
+                    if pending.deadline
+                    else None
+                ),
+                "priority": pending.priority,
+                "message": (
+                    f"存在待确认的任务创建：{pending.title}，"
+                    "回复「确认」创建，或「取消」放弃。"
+                ),
+            }
+
+        finally:
+
+            db.close()
+
+    # ======================
+    # 内部：AI 解析（任务创建）
+    # ======================
+
+    def _parse_create_message(
+            self,
+            content: str
+    ) -> dict:
+
+        """
+        解析任务创建消息（用户要求：执行人与日期确定性，LLM 只补描述）
+
+        解析职责划分：
+        - 执行人：确定性正则提取（_fallback_create_parse），LLM 不负责
+        - 截止时间：原文保留，由 _parse_deadline_text 确定性解析
+        - LLM 仅补充 title/description/priority（失败回退确定性）
+        """
+
+        # 先确定性提取执行人/截止（不依赖 LLM，稳定）
+        base = self._fallback_create_parse(content)
+
+        employee_name = (
+            base.get("employee_name")
+            or ""
+        ).strip()
+
+        deadline_text = (
+            base.get("deadline_text")
+            or ""
+        ).strip()
+
+        # LLM 只补 title/description/priority（执行人/截止已确定，不覆盖）
+        extra = self._llm_create_extra(content)
+
+        # 标题：确定性提取优先（LLM 输出不稳定，避免覆盖正确解析）；
+        # LLM 仅在确定性为空时补充
+        title = (
+            base.get("title")
+            or extra.get("title")
+            or ""
+        ).strip()
+
+        # 执行人/截止确定性覆盖 LLM（用户要求：这两项系统负责）
+        return {
+            "employee_name": employee_name,
+            "title": title,
+            "deadline_text": deadline_text,
+            "priority": (
+                extra.get("priority")
+                or "normal"
+            ),
+            "description": (
+                extra.get("description")
+                or base.get("description")
+                or ""
+            ),
+        }
+
+    def _llm_create_extra(
+            self,
+            content: str
+    ) -> dict:
+
+        """
+        LLM 仅补充 title/description/priority（不解析执行人与日期）
+
+        失败回退确定性提取的 title/description。
+        """
+
+        try:
+
+            from work_agent.agent.llm import get_llm
+
+            from work_agent.core.prompt_manager import prompt_manager
+
+            from work_agent.core.utils import parse_json
+
+            loaded = prompt_manager.load(
+                "task_create_parse"
+            )
+
+            result = get_llm().invoke(
+                loaded["content"].format(
+                    message=content,
+                )
+            )
+
+            data = parse_json(
+                result.content
+            )
+
+            return {
+                "title": (
+                    data.get("title", "")
+                    or ""
+                ),
+                "priority": (
+                    data.get("priority", "normal")
+                    or "normal"
+                ),
+                "description": (
+                    data.get("description", "")
+                    or ""
+                ),
+            }
+
+        except Exception:
+
+            base = self._fallback_create_parse(content)
+
+            return {
+                "title": base.get("title", ""),
+                "priority": "normal",
+                "description": base.get("description", ""),
+            }
+
+    @staticmethod
+    def _fallback_create_parse(
+            content: str
+    ) -> dict:
+
+        """
+        确定性回退：提取执行人（给/安排/让 + 姓名）+ 任务名
+        """
+
+        title = ""
+
+        employee_name = ""
+
+        deadline_text = ""
+
+        # 执行人：匹配「给XX / 安排XX / 让XX」，遇指令词/任务词即停，
+        # 排除量词「一个/一些/这个」等（避免"安排一个任务"误判执行人）
+        match = re.search(
+            r"(?:给|安排|让|分派|指派)\s*"
+            r"(?!(?:一个|一些|这个|那个|个|下|所有))\s*"
+            r"([一-龥A-Za-z]{2,12}?)"
+            r"(?=安排|发布|分派|指派|做|完成|开发|测试|任务|，|,|。|的|了)",
+            content,
+        )
+
+        if match:
+            employee_name = match.group(1)
+
+        # 截止：匹配「X天后/下周五/明天/今天」
+        match = re.search(
+            r"(?:下?周[一二三四五六日天]|今[天日]|明[天日]|后[天日]|\d+\s*天后?)",
+            content,
+        )
+
+        if match:
+            deadline_text = match.group(0)
+
+        # 任务名：去掉执行人/指令/截止后的剩余文本
+        title_text = content
+
+        if employee_name:
+            title_text = title_text.replace(
+                employee_name,
+                "",
+            )
+
+        for prefix in ("给", "安排", "让", "分派", "指派", "完成", "任务"):
+
+            title_text = title_text.replace(
+                prefix,
+                "",
+            )
+
+        if deadline_text:
+            title_text = title_text.replace(
+                deadline_text,
+                "",
+            )
+
+        title_text = title_text.strip(" ，,。！!的:")
+
+        if title_text:
+            title = title_text[:50]
+
+        return {
+            "employee_name": employee_name,
+            "title": title,
+            "deadline_text": deadline_text,
+            "priority": "normal",
+            "description": content,
+        }
+
+    @staticmethod
+    def _parse_deadline_text(
+            deadline_text: str
+    ) -> datetime | None:
+
+        """
+        截止时间确定性解析（代码规则优先，LLM 不负责）
+
+        支持：今天/明天/后天/下周X/X天后/X月X日/尽快 → datetime
+        无法解析返回 None（草稿保留原文，确认时缺截止也可创建）
+        """
+
+        from datetime import timedelta
+
+        if not deadline_text or not deadline_text.strip():
+
+            return None
+
+        text = deadline_text.strip()
+
+        now = datetime.now()
+
+        # 星期映射
+        weekday_map = {
+            "一": 0,
+            "二": 1,
+            "三": 2,
+            "四": 3,
+            "五": 4,
+            "六": 5,
+            "日": 6,
+            "天": 6,
+        }
+
+        if text == "尽快" or text == "越快越好":
+            return now + timedelta(days=1)
+
+        if text in ("今天", "今日"):
+            return now.replace(
+                hour=18,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        if text in ("明天", "明日"):
+            return (
+                now + timedelta(days=1)
+            ).replace(
+                hour=18,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        if text in ("后天",):
+            return (
+                now + timedelta(days=2)
+            ).replace(
+                hour=18,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        # 下周X
+        match = re.match(
+            r"^下周([一二三四五六日天])$",
+            text,
+        )
+
+        if match:
+
+            target = weekday_map.get(match.group(1))
+
+            if target is not None:
+
+                days = (target - now.weekday() + 7) % 7
+                if days == 0:
+                    days = 7
+                return (
+                    now + timedelta(days=days)
+                ).replace(
+                    hour=18,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+
+        # X天后
+        match = re.match(
+            r"^(\d+)\s*天?后$",
+            text,
+        )
+
+        if match:
+
+            days = int(match.group(1))
+
+            return (
+                now + timedelta(days=days)
+            ).replace(
+                hour=18,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        # X月X日（本年）
+        match = re.match(
+            r"^(\d{1,2})月(\d{1,2})[日号]$",
+            text,
+        )
+
+        if match:
+
+            try:
+
+                return datetime(
+                    now.year,
+                    int(match.group(1)),
+                    int(match.group(2)),
+                    18,
+                    0,
+                    0,
+                )
+
+            except ValueError:
+                return None
+
+        # ISO 或 YYYY-MM-DD
+        try:
+
+            return datetime.fromisoformat(text)
+
+        except ValueError:
+            pass
+
+        return None
+
+    # ======================
     # 内部：AI 解析
     # ======================
 

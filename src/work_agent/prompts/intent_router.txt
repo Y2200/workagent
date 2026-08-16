@@ -33,11 +33,15 @@
    例如："我的任务" "我的任务完成了吗" "查看任务进度" "提交财务模块任务，完成80%" "确认" "取消" "任务完成" "查看研发部任务情况" "部门任务"
    entities.action 取值：list（查看我的任务）/department_tasks（查看部门任务）/detail（任务详情）/submit（提交进度）/confirm（确认）/cancel（取消）/complete（完成任务）
 
-7. small_talk
+7. task_create
+   管理员发布/安排任务给员工（需确认后创建）。
+   例如："给张三安排客户系统测试任务，下周五完成" "给李四发布报销审核任务" "安排王五开发登录模块"
+
+8. small_talk
    普通寒暄，无关工作。
    例如："你好" "谢谢" "在吗"
 
-8. unknown
+9. unknown
    无法归类。
 
 # 工具选择
@@ -46,6 +50,7 @@
 - document_operation → need_tool=true, tool=document_tool
 - audit_query → need_tool=true, tool=audit_tool
 - task_management → need_tool=true, tool=task_tool
+- task_create → need_tool=true, tool=task_tool
 - workflow_request → need_tool=false
 - risk_analysis → need_tool=false
 - small_talk → need_tool=false
@@ -67,7 +72,7 @@
 - task_type: 任务类型（如：日报/周报/项目任务/报销/请假/其他）
 - category: 知识分类（如：财务管理/人事管理/项目管理/安全管理）
 - document_ref: 涉及的文档名或ID
-- action: 操作类型（文档：upload/delete/view_permission/update_permission；任务：list/submit/confirm/cancel/complete）
+- action: 操作类型（文档：upload/delete/view_permission/update_permission；任务：list/department_tasks/detail/submit/confirm/cancel/complete/create）
 
 # 输入
 

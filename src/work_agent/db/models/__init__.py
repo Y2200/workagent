@@ -29,6 +29,7 @@ from work_agent.db.models.task import (
     Task,
     TaskUpdate,
     TaskPendingUpdate,
+    TaskPendingCreate,
     TaskNotification,
 )
 
@@ -56,5 +57,6 @@ __all__ = [
     "Task",
     "TaskUpdate",
     "TaskPendingUpdate",
+    "TaskPendingCreate",
     "TaskNotification"
 ]

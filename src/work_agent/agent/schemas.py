@@ -19,6 +19,9 @@ class IntentType:
 
     TASK_MANAGEMENT = "task_management"
 
+    # Enterprise Agent：任务发布（管理员，带确认）
+    TASK_CREATE = "task_create"
+
     SMALL_TALK = "small_talk"
 
     UNKNOWN = "unknown"
