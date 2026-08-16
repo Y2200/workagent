@@ -617,3 +617,22 @@ Phase：企微问答链路（租户语义错配）
 验证：新测试 test_tenant_global_docs 4 部分（空租户全局可见/非空租户隔离保持/权限过滤仍生效/filter 表达式）；回归 test_permission/test_tenant_admin/test_security_regression/test_knowledge_intelligence/test_agent_intelligence/生产套件 6/6+契约 全绿
 教训：单企业一套知识库 + 文档级权限时，租户字段用于隔离多企业数据；企微用户与 Web 管理员租户取值不一致会把"共享文档"误隔离。检索过滤需放行空租户（平台/全局）文档
 ====================
+====================
+时间：2026-08-16
+Phase：Enterprise Agent 升级（4 Phase）
+文件：agent/ 全层 + services/ + repositories/ + db/models/task.py + config + scheduler
+问题：系统更偏"提问→LLM→查库→回答"的查询器，而非"自主编排工具"的企业 Agent；企微端无任务创建；无按部门查任务/定向提醒能力
+原因：planner 确定性硬编码工具选择（无 bind_tools，JSON 路由）；工具集仅 6 个；AgentContext 无角色码（role 是自由文本）；无部门维度查询/提醒
+方案（用户确认）：JSON 路由不引入原生 function-calling；分 4 Phase 逐步提交；风险操作（建任务/发邮件）用户回「确认」才执行；执行人 DB 确定性、日期代码规则、LLM 仅补描述；只加 task:notify 一个权限码
+修复：
+- Phase1: BaseTool 权限钩子（REQUIRED_PERMISSION/PERMISSION_MAP/check_permission/denied）+ AgentContext.role_codes + registry 含权限信息 + TaskTool schema 修复
+- Phase2: user_tool/check_department_scope/UserService + task_tool.department_tasks + repository 部门查询
+- Phase3: task_pending_creates 表（creator_id+status 唯一）+ preview/confirm/cancel create + TASK_CREATE 意图 + task_create_parse prompt
+- Phase4: notification_tool（send_email confirmation+SMTP 检查）/督办增强（staleness/digest）/周报部门经理投递/agent_logs.confirmed 审计/task:notify 权限码
+经验：
+1. 工具层必须经 Service 访问 DB——契约 agent_no_db_direct 抓住直连违规，新增 UserService 修复
+2. LLM 解析执行人/日期不稳定（测试实证），必须确定性优先；LLM 只补描述
+3. 现有测试的 fake repo（_FakeRepo.list_remindable）需同步可选参数签名
+4. 契约测试会随 RBAC 权限码新增而失败，需同步更新 test_rbac 断言
+验证：test_enterprise_agent 12 项 + test_task_reminder_extended 5 项 + 全量回归 + 生产套件 6/6+契约 全绿
+====================
