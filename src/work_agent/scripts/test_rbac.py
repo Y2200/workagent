@@ -95,11 +95,17 @@ def test():
             "task:view",
             "task:create",
             "task:notify",
+            "task:view_employee",
+            "task:remind",
+            "email:send",
+            "policy:view",
         }, dept_perms
 
         assert user_perms == {
             "document:view",
             "task:view",
+            "task:submit",
+            "policy:view",
         }, user_perms
 
     finally:

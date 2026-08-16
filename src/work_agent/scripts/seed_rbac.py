@@ -23,6 +23,16 @@ PERMISSIONS = [
     ("task:create", "创建任务", "下发任务给员工"),
     ("task:manage", "任务管理", "任务统计/督导管理"),
     ("task:notify", "任务提醒", "主动督促/提醒员工任务（企微/邮件）"),
+    # ======================
+    # 企业任务决策层（Phase 7A）
+    # ======================
+    ("task:submit", "提交任务", "员工提交/确认/取消自己的任务进度"),
+    ("task:view_employee", "查看员工任务", "管理者查看员工/部门任务、任务汇总"),
+    ("task:remind", "主动提醒", "主动提醒/督促员工（企微）"),
+    ("email:send", "发送邮件", "发送邮件通知/提醒"),
+    ("policy:view", "查看制度", "查询企业制度/知识库"),
+    ("system:scan", "系统扫描", "系统定时扫描任务（System Agent）"),
+    ("report:send", "发送报告", "系统生成并发送部门任务总结（System Agent）"),
 ]
 
 # 角色 → 权限码
@@ -41,6 +51,13 @@ ROLES = {
             "task:create",
             "task:manage",
             "task:notify",
+            "task:submit",
+            "task:view_employee",
+            "task:remind",
+            "email:send",
+            "policy:view",
+            "system:scan",
+            "report:send",
         ],
     },
     "TENANT_ADMIN": {
@@ -57,6 +74,13 @@ ROLES = {
             "task:create",
             "task:manage",
             "task:notify",
+            "task:submit",
+            "task:view_employee",
+            "task:remind",
+            "email:send",
+            "policy:view",
+            "system:scan",
+            "report:send",
         ],
     },
     "DEPARTMENT_ADMIN": {
@@ -68,6 +92,10 @@ ROLES = {
             "task:view",
             "task:create",
             "task:notify",
+            "task:view_employee",
+            "task:remind",
+            "email:send",
+            "policy:view",
         ],
     },
     "USER": {
@@ -75,6 +103,8 @@ ROLES = {
         "permissions": [
             "document:view",
             "task:view",
+            "task:submit",
+            "policy:view",
         ],
     },
 }
