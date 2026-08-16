@@ -376,6 +376,11 @@ class TaskTool(BaseTool):
                 creator_id=context.user_id,
                 creator_tenant_id=context.tenant_id,
                 content=content or query,
+                chat_history=getattr(
+                    context,
+                    "chat_history",
+                    None,
+                ),
             )
 
         # 确认 / 取消：优先消解任务创建草稿，其次进度确认

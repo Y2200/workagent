@@ -756,7 +756,8 @@ class TaskService:
             *,
             creator_id: int,
             creator_tenant_id: str,
-            content: str
+            content: str,
+            chat_history=None
     ) -> dict:
 
         """
@@ -766,6 +767,10 @@ class TaskService:
         - 执行人：DB 确定性查询（UserRepository.search_by_name），LLM 不负责
         - 截止时间：代码规则优先（_parse_deadline_text）
         - LLM 仅补充描述/标题/优先级字段（prompt task_create_parse）
+
+        chat_history（可选）：会话上下文，只辅助 LLM 理解
+        （如"按照这个制度给张三安排任务"的"这个制度"）；
+        不参与 employee_id/deadline/RBAC 等业务决策。
 
         返回：
             awaiting_confirmation / need_info / employee_not_found
@@ -779,7 +784,10 @@ class TaskService:
                 "missing": ["title", "employee_name"],
             }
 
-        parsed = self._parse_create_message(content)
+        parsed = self._parse_create_message(
+            content,
+            chat_history,
+        )
 
         title = (parsed.get("title") or "").strip()
 
@@ -1072,7 +1080,8 @@ class TaskService:
 
     def _parse_create_message(
             self,
-            content: str
+            content: str,
+            chat_history=None
     ) -> dict:
 
         """
@@ -1082,6 +1091,7 @@ class TaskService:
         - 执行人：确定性正则提取（_fallback_create_parse），LLM 不负责
         - 截止时间：原文保留，由 _parse_deadline_text 确定性解析
         - LLM 仅补充 title/description/priority（失败回退确定性）
+        - chat_history：只辅助 LLM 理解上下文，不参与业务决策
         """
 
         # 先确定性提取执行人/截止（不依赖 LLM，稳定）
@@ -1098,7 +1108,10 @@ class TaskService:
         ).strip()
 
         # LLM 只补 title/description/priority（执行人/截止已确定，不覆盖）
-        extra = self._llm_create_extra(content)
+        extra = self._llm_create_extra(
+            content,
+            chat_history,
+        )
 
         # 标题：确定性提取优先（LLM 输出不稳定，避免覆盖正确解析）；
         # LLM 仅在确定性为空时补充
@@ -1126,12 +1139,16 @@ class TaskService:
 
     def _llm_create_extra(
             self,
-            content: str
+            content: str,
+            chat_history=None
     ) -> dict:
 
         """
         LLM 仅补充 title/description/priority（不解析执行人与日期）
 
+        chat_history（可选）作为对话上下文辅助 LLM 理解
+        （如"按照这个制度给张三安排任务"中的"这个制度"指上一轮制度）；
+        只辅助理解，不参与执行人/日期/RBAC 等业务决策。
         失败回退确定性提取的 title/description。
         """
 
@@ -1143,13 +1160,26 @@ class TaskService:
 
             from work_agent.core.utils import parse_json
 
+            from work_agent.services.conversation_memory_service import (
+                conversation_memory_service,
+            )
+
             loaded = prompt_manager.load(
                 "task_create_parse"
+            )
+
+            history_text = (
+                conversation_memory_service.serialize_history(
+                    chat_history
+                )
+                if chat_history
+                else ""
             )
 
             result = get_llm().invoke(
                 loaded["content"].format(
                     message=content,
+                    history=history_text,
                 )
             )
 
