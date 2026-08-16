@@ -46,11 +46,30 @@ class ToolRegistry:
 
     def list_tools(self) -> list[dict]:
 
+        """
+        统一工具清单（Enterprise Agent）
+
+        含权限信息：required_permission（整工具）/ permission_map（action → 权限码），
+        供 planner/LLM 编排与审计使用。
+        """
+
         return [
             {
                 "name": tool.name,
                 "description": tool.description,
                 "input_schema": tool.input_schema,
+                "required_permission": getattr(
+                    tool,
+                    "REQUIRED_PERMISSION",
+                    "",
+                ),
+                "permission_map": dict(
+                    getattr(
+                        tool,
+                        "PERMISSION_MAP",
+                        {},
+                    )
+                ),
             }
             for tool in self._tools.values()
         ]

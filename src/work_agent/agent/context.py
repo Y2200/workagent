@@ -28,6 +28,12 @@ class AgentContext:
         default_factory=set
     )
 
+    # RBAC 角色码（如 SUPER_ADMIN/DEPARTMENT_ADMIN/USER），Runtime 注入
+    # 用于部门作用域校验等角色维度判断（role 字段是 User.role 自由文本，非角色码）
+    role_codes: set[str] = field(
+        default_factory=set
+    )
+
     conversation_id: str = ""
 
     channel: str = "wechat"
@@ -46,6 +52,7 @@ class AgentContext:
             user,
             channel: str = "wechat",
             permissions: set[str] | None = None,
+            role_codes: set[str] | None = None,
             conversation_id: str | None = None,
             model_name: str = "",
             agent_version: str = "",
@@ -56,6 +63,7 @@ class AgentContext:
         从 User 构建上下文
 
         request_id 由调用方注入（与审计/追踪对齐），缺省自动生成
+        role_codes 由 Runtime 注入（RBAC 角色码，部门作用域校验用）
         """
 
         return cls(
@@ -67,6 +75,9 @@ class AgentContext:
             role=user.role,
             permissions=set(
                 permissions or []
+            ),
+            role_codes=set(
+                role_codes or []
             ),
             conversation_id=conversation_id or str(uuid4()),
             channel=channel,
