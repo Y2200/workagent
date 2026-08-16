@@ -2,6 +2,53 @@ import json
 import re
 
 
+def build_tenant_filter(
+        tenant_id: str
+) -> str:
+
+    """
+    构建 Milvus 检索租户过滤表达式
+
+    语义：空租户文档（metadata["tenant_id"] == ""）对所有用户全局可见；
+    用户自己租户的文档也可见。
+
+    原因：单企业一套知识库，Web 管理员（tenant_id=""）上传的文档
+    是空租户，企微用户绑定具体租户（如 "1"）。若仅按用户租户精确过滤，
+    企微用户将检索不到 Web 上传的空租户文档。
+
+    返回：
+        空租户用户  → metadata["tenant_id"] == ""
+        具体租户用户 → metadata["tenant_id"] == "X" or metadata["tenant_id"] == ""
+    """
+
+    tenant_id = (tenant_id or "").strip()
+
+    expr = (
+        f'metadata["tenant_id"] == "{_escape_milvus(tenant_id)}"'
+    )
+
+    # 非空租户用户额外放行空租户（全局）文档
+    if tenant_id:
+        expr += (
+            f' or metadata["tenant_id"] == ""'
+        )
+
+    return expr
+
+
+def _escape_milvus(value: str) -> str:
+
+    """
+    Milvus filter 字符串字面量转义（双引号/反斜杠）
+    """
+
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+    )
+
+
 def parse_json(text):
 
     text = text.replace(

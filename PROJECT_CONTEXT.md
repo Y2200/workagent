@@ -6,9 +6,15 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-16，文档 PG/Milvus 一致性修复完成）
+# ⚡ 当前状态（2026-08-16，租户语义修复完成：企微可查 Web 文档）
 
-**代码状态**：本地 `master` = `2690250` + 文档一致性修复（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态**：本地 `master` = `a6eb3ed`（一致性修复）+ 租户语义修复（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+## 最新（2026-08-16）：企微查不到 Web 空租户文档 → 已修复
+- **bug**：企微提问回复"未检索到相关制度"，Web 端能搜到同一批文档
+- **根因**：Web 管理员（tenant_id=""）上传的文档空租户；企微用户绑定租户1；检索 filter `metadata["tenant_id"]=="1"` 精确过滤 → 企微用户只命中租户1文档，Web 空租户文档全被挡。单企业一套知识库，可见性应由文档级权限（visibility/access）控制，非租户
+- **修复**：`core/utils.py` 新增 `build_tenant_filter()`（空租户文档全局可见 + 自己租户）；`rag/service.py`（企微 Agent 入口）+ `knowledge/service.py`（Web 入口）接入
+- **测试**：`scripts/test_tenant_global_docs.py` 4 部分 + 回归全绿（生产套件 6/6+契约）
 
 ## 最新（2026-08-16）：删除-管线竞态修复（文档孤儿向量）
 - **bug**：Web 上传后立即删除文档 → Milvus 孤儿向量（PG 已删、向量残留），删除后新导入的文档被孤儿污染/挤出搜索（"中间删除后新导入查不到"）
@@ -436,6 +442,7 @@ python -m work_agent.scripts.test_task_reminder           # 任务自动督办�
 python -m work_agent.scripts.test_user_management         # 用户管理增强（新建/编辑/real_name/并发加固）
 python -m work_agent.scripts.test_task_stats              # 任务统计/周报/邮件（Phase 4）
 python -m work_agent.scripts.test_document_consistency   # 文档 PG/Milvus 一致性（删除-管线竞态修复）
+python -m work_agent.scripts.test_tenant_global_docs     # 租户语义：空租户文档全局可见（企微查不到 Web 文档修复）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000

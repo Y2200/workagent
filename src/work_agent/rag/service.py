@@ -1,3 +1,4 @@
+from work_agent.core.utils import build_tenant_filter
 from work_agent.rag.embedding import Embedding
 from work_agent.rag.milvus_store import MilvusVectorStore
 from work_agent.rag.retriever import Retriever
@@ -108,8 +109,9 @@ class RAGService:
                 or ""
             )
 
-            filter_expr = (
-                f'metadata["tenant_id"] == "{_escape(tenant_id)}"'
+            # 空租户文档全局可见 + 用户自己租户（单企业一套知识库，权限靠文档级 access）
+            filter_expr = build_tenant_filter(
+                tenant_id
             )
 
 
@@ -136,16 +138,3 @@ class RAGService:
             "candidates": len(candidates),
             "denied": denied
         }
-
-
-def _escape(value: str) -> str:
-
-    """
-    Milvus filter 字符串字面量转义
-    """
-
-    return (
-        value
-        .replace("\\", "\\\\")
-        .replace('"', '\\"')
-    )

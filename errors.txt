@@ -607,3 +607,13 @@ Phase：文档一致性（删除-管线竞态）
 验证：竞态复现 8 轮最终 0 孤儿；test_document_consistency 3/3；回归 test_permission/test_tenant_admin/test_permission_management/test_security_regression/test_milvus/生产套件 6/6+契约/test_agent_intelligence/test_task_agent/test_user_management 全绿
 教训：异步管线（ThreadPoolExecutor）与删除操作必须互斥；删除需先发"停止信号"再清理，管线插入前后各校验一次防止竞态窗口
 ====================
+====================
+时间：2026-08-16
+Phase：企微问答链路（租户语义错配）
+文件：core/utils.py + rag/service.py + knowledge/service.py
+问题：企微端提问回复"未检索到相关制度"，而 Web 端能搜到同一批文档
+原因：Web 管理员（admin tenant_id=""）上传的文档 tenant_id 为空；企微用户绑定具体租户（如 tenant_id="1"）。检索时 Milvus filter 按 `metadata["tenant_id"] == "1"` 精确过滤 → 企微用户只命中 tenant_id=1 的文档，Web 上传的空租户文档全部被挡。真正控制文档可见性的应是 Web 设置的文档级权限（visibility/departments/roles/user_ids → access 元数据），而非租户。
+修复：core/utils.py 新增 build_tenant_filter(tenant_id)——空租户文档（tenant_id=""）对所有用户全局可见 + 用户自己租户文档可见；rag/service.py（企微 Agent 入口 search_with_meta）与 knowledge/service.py（Web 入口 search）改用它。similarity/quality 是管理接口（按目标文档租户校验防越权），保持原样。
+验证：新测试 test_tenant_global_docs 4 部分（空租户全局可见/非空租户隔离保持/权限过滤仍生效/filter 表达式）；回归 test_permission/test_tenant_admin/test_security_regression/test_knowledge_intelligence/test_agent_intelligence/生产套件 6/6+契约 全绿
+教训：单企业一套知识库 + 文档级权限时，租户字段用于隔离多企业数据；企微用户与 Web 管理员租户取值不一致会把"共享文档"误隔离。检索过滤需放行空租户（平台/全局）文档
+====================
