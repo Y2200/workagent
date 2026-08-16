@@ -126,6 +126,15 @@ class DocumentPipeline:
             )
 
 
+            # 竞态防护：插入前校验文档仍存在（未删除/未标记 deleting）
+            # Web 上传后管线异步执行，用户可能在处理中删除文档；
+            # 若不校验，删除先完成、管线后插入 → Milvus 孤儿向量（PG 已删、向量残留）
+            if not self._is_active(document_id):
+                print(
+                    f"文档已被删除，跳过向量插入: {document_id}"
+                )
+                return
+
             # 插入 Milvus（document_id 作为动态字段）
             milvus_ids = self.store.insert_documents(
                 chunks,
@@ -135,6 +144,18 @@ class DocumentPipeline:
                 tenant_id=document.tenant_id
             )
 
+
+            # 竞态防护：插入后、落库前二次校验。
+            # 若删除恰好在 insert 之后发生，回滚刚插入的 Milvus 向量，避免孤儿
+            if not self._is_active(document.id):
+                print(
+                    f"文档在向量插入后被删除，回滚: {document.id}"
+                )
+                try:
+                    self.store.delete_by_document(document.id)
+                except Exception:
+                    pass
+                return
 
             # knowledge_chunks 是向量映射事实源
             self.chunk_repository.bulk_create(
@@ -185,6 +206,37 @@ class DocumentPipeline:
         finally:
 
             db.close()
+
+
+    def _is_active(
+            self,
+            document_id: int
+    ) -> bool:
+
+        """
+        独立 Session 校验文档是否仍处于活跃状态
+
+        删除操作先把 status 置为 deleting，再删 Milvus/DB；
+        管线在插入前后各校验一次，防止「删除先完成、管线后插入」产生 Milvus 孤儿向量
+        """
+
+        probe = SessionLocal()
+
+        try:
+
+            doc = self.document_repository.get_by_id(
+                probe,
+                document_id
+            )
+
+            return (
+                doc is not None
+                and doc.status not in ("deleting", "deleted")
+            )
+
+        finally:
+
+            probe.close()
 
 
     def _classify(

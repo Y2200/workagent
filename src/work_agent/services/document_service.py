@@ -168,6 +168,15 @@ class DocumentService:
                     "无权删除该文档"
                 )
 
+            # 0. 先标记 deleting（提交），通知并发管线停止插入
+            #    竞态防护：管线在插入前后各校验一次文档状态，
+            #    标记删除后管线校验不通过 → 不产生 Milvus 孤儿向量
+            self.document_repository.update_status(
+                db,
+                document_id,
+                "deleting"
+            )
+
             # 1. 按 milvus_id 删向量（唯一事实源）
             milvus_ids = self.chunk_repository.get_milvus_ids_by_document(
                 db,

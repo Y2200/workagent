@@ -6,9 +6,16 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-14，任务督导 Phase 4 + 用户管理 + 企微链路修复 全部完成）
+# ⚡ 当前状态（2026-08-16，文档 PG/Milvus 一致性修复完成）
 
-**代码状态**：本地 `master` = 远程 `origin/master` = `87edaa4`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。企微链路全通（验签/解密/身份/Agent/回复），Milvus 租户元数据修复已上线。
+**代码状态**：本地 `master` = `2690250` + 文档一致性修复（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+## 最新（2026-08-16）：删除-管线竞态修复（文档孤儿向量）
+- **bug**：Web 上传后立即删除文档 → Milvus 孤儿向量（PG 已删、向量残留），删除后新导入的文档被孤儿污染/挤出搜索（"中间删除后新导入查不到"）
+- **根因**：upload 建记录后异步管线线程池执行；删除若在管线插入 Milvus 前完成，delete 时 knowledge_chunks 为空 → 删不到"还没插入的向量" → 管线随后插入 → 孤儿
+- **修复**：① delete() 先置 status=deleting 通知管线；② 管线插入 Milvus 前 `_is_active` 校验（被删跳过插入）；③ 插入后落库前二次校验（被删则 `delete_by_document` 回滚自愈）；文件 `services/document_service.py` + `document/pipeline.py`
+- **测试**：`scripts/test_document_consistency.py` 3 部分（顺序删除彻底/删除后新导入可检索/竞态最终 0 孤儿）+ 全量回归绿（生产套件 6/6+契约）
+- **经验**：异步管线与删除必须互斥；删除先发"停止信号"再清理，管线插入前后各校验一次
 
 ## 已上线（生产服务器已部署）
 - 企微接入：回调 `api/wechat.py` + 手写 WXBizMsgCrypt（`wechat/crypto.py`）+ 统一 WeComClient（Redis token 缓存）+ 用户绑定 `api/users.py`/`Users.vue`
@@ -428,6 +435,7 @@ python -m work_agent.scripts.test_production_suite        # P5-5-7 生产套件�
 python -m work_agent.scripts.test_task_reminder           # 任务自动督办（Phase 3）
 python -m work_agent.scripts.test_user_management         # 用户管理增强（新建/编辑/real_name/并发加固）
 python -m work_agent.scripts.test_task_stats              # 任务统计/周报/邮件（Phase 4）
+python -m work_agent.scripts.test_document_consistency   # 文档 PG/Milvus 一致性（删除-管线竞态修复）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
