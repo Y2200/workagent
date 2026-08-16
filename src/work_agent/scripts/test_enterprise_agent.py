@@ -298,6 +298,112 @@ def _cleanup_pending_creates():
         db.close()
 
 
+def test_c_notification_tool():
+    """Part C：notification_tool 企微/邮件提醒 + 部门作用域 + 权限"""
+    from work_agent.agent.tools.notification_tool import NotificationTool
+    from work_agent.config import settings
+
+    tool = NotificationTool()
+
+    # 目标员工：A研发员工（租户1 研发部，有 wechat）
+    target = _db_user("A研发员工")
+    assert target, "缺少 A研发员工"
+
+    # mock 企微发送
+    import work_agent.wechat.client as wc
+
+    class FakeClient:
+        def send_text_message(self, user_id, content):
+            return {"errcode": 0, "errmsg": "ok"}
+
+    old_client = wc.wecom_client
+    wc.wecom_client = FakeClient()
+
+    try:
+        # 部门管理员（研发部）有 task:notify → send_wechat 成功
+        ctx_dept = _ctx(
+            permissions={"task:view", "task:notify"},
+            role_codes={"DEPARTMENT_ADMIN"},
+            tenant_id="1", department="研发部",
+        )
+        r = tool.execute(
+            context=ctx_dept,
+            action="send_wechat",
+            employee_id=target.id,
+            content="请尽快完成测试任务",
+        )
+        assert r.get("ok") is True, r
+        assert r["status"] == "sent", r
+
+        # 跨部门提醒被拒（研发部 admin 提醒 财务部 员工）
+        ctx_dept_rd = _ctx(
+            permissions={"task:view", "task:notify"},
+            role_codes={"DEPARTMENT_ADMIN"},
+            tenant_id="1", department="研发部",
+        )
+        finance = _db_user("A财务员工")
+        r2 = tool.execute(
+            context=ctx_dept_rd,
+            action="send_wechat",
+            employee_id=finance.id,
+            content="提醒",
+        )
+        assert r2["error"] == "permission_denied", r2
+
+        # USER 无 task:notify → denied
+        ctx_user = _ctx(
+            permissions={"task:view"},
+            role_codes={"USER"},
+            tenant_id="1",
+        )
+        r3 = tool.execute(
+            context=ctx_user,
+            action="send_wechat",
+            employee_id=target.id,
+            content="提醒",
+        )
+        assert r3["error"] == "permission_denied", r3
+
+        # send_email：SMTP 未启用 → email_disabled（明确提示，不走失败流程）
+        # 用有 email 的用户（统计创建者）+ SUPER_ADMIN（无部门限制）
+        email_user = _db_user("统计创建者")
+        ctx_admin = _ctx(
+            permissions={"task:view", "task:notify"},
+            role_codes={"SUPER_ADMIN"},
+            tenant_id="1",
+        )
+        old_email = settings.email_enabled
+        settings.email_enabled = False
+        try:
+            assert email_user, "缺少有 email 的用户（统计创建者）"
+            r4 = tool.execute(
+                context=ctx_admin,
+                action="send_email",
+                employee_id=email_user.id,
+                subject="测试",
+                content="测试邮件",
+            )
+            assert r4["status"] == "email_disabled", r4
+            assert "未启用" in r4["detail"], r4
+        finally:
+            settings.email_enabled = old_email
+
+        # 未绑定企微员工 → send_wechat 明确提示
+        unbound = _db_user("督办测试未绑定")
+        if unbound:
+            r5 = tool.execute(
+                context=ctx_dept,
+                action="send_wechat",
+                employee_id=unbound.id,
+                content="提醒",
+            )
+            assert r5["error"] == "no_wechat_binding", r5
+
+        print("✓ PartC notification_tool（企微发送/跨部门拒/无权限拒/SMTP未启用提示/未绑定提示）")
+    finally:
+        wc.wecom_client = old_client
+
+
 def test_e_task_create_flow():
     """Part E：任务创建确认流（preview → confirm → created / cancel）"""
     from work_agent.core.container import task_service
@@ -460,13 +566,14 @@ def test_e2_deadline_parse():
 
 
 def test():
-    print("== Enterprise Agent 测试（Phase 1-3）==")
+    print("== Enterprise Agent 测试（Phase 1-4）==")
     test_a_base_tool_permission_hook()
     test_a2_context_role_codes()
     test_a3_registry_permission_info()
     test_a4_task_tool_schema()
     test_b_user_tool()
     test_b2_department_scope()
+    test_c_notification_tool()
     test_d_department_tasks()
     test_e_task_create_flow()
     test_e2_deadline_parse()

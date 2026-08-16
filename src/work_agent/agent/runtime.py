@@ -318,6 +318,9 @@ class AgentRuntime:
                         "tools_called",
                         [],
                     ),
+                    confirmed=result.get(
+                        "confirmed",
+                    ),
                 )
 
                 # LLM 成本记账（失败静默）

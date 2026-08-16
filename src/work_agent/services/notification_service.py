@@ -123,6 +123,70 @@ class NotificationService:
             "detail": detail,
         }
 
+    def send_email(
+            self,
+            *,
+            tenant_id: str,
+            task_id: int | None,
+            receiver_id: int,
+            to: str,
+            subject: str,
+            content: str
+    ) -> dict:
+
+        """
+        通用邮件通知（Enterprise Agent notification_tool）
+
+        SMTP 未配置 → 返回 email_disabled（明确提示未启用，不走失败流程）。
+        发送后落库 task_notifications（channel=email）。
+        """
+
+        from work_agent.config import settings
+
+        from work_agent.services.email_service import email_service
+
+        if not settings.email_enabled:
+
+            return {
+                "ok": False,
+                "status": "email_disabled",
+                "detail": "邮件功能未启用，请联系管理员配置 SMTP",
+            }
+
+        resp = email_service.send(
+            to=to,
+            subject=subject,
+            content=content,
+        )
+
+        ok = resp.get("ok", False)
+
+        status = (
+            "sent"
+            if ok
+            else "failed"
+        )
+
+        self.record(
+            tenant_id=tenant_id,
+            task_id=task_id or 0,
+            receiver_id=receiver_id,
+            channel="email",
+            content=f"[{subject}] {content}",
+            status=status,
+            sent_at=(
+                datetime.now()
+                if ok
+                else None
+            ),
+        )
+
+        return {
+            "ok": ok,
+            "status": status,
+            "detail": resp.get("detail", ""),
+        }
+
     def send_task_created(
             self,
             task

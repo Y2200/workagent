@@ -22,6 +22,7 @@ PERMISSIONS = [
     ("task:view", "查看任务", "查看任务列表/详情"),
     ("task:create", "创建任务", "下发任务给员工"),
     ("task:manage", "任务管理", "任务统计/督导管理"),
+    ("task:notify", "任务提醒", "主动督促/提醒员工任务（企微/邮件）"),
 ]
 
 # 角色 → 权限码
@@ -39,6 +40,7 @@ ROLES = {
             "task:view",
             "task:create",
             "task:manage",
+            "task:notify",
         ],
     },
     "TENANT_ADMIN": {
@@ -54,6 +56,7 @@ ROLES = {
             "task:view",
             "task:create",
             "task:manage",
+            "task:notify",
         ],
     },
     "DEPARTMENT_ADMIN": {
@@ -64,6 +67,7 @@ ROLES = {
             "audit:view",
             "task:view",
             "task:create",
+            "task:notify",
         ],
     },
     "USER": {

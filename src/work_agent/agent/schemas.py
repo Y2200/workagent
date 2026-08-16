@@ -22,6 +22,9 @@ class IntentType:
     # Enterprise Agent：任务发布（管理员，带确认）
     TASK_CREATE = "task_create"
 
+    # Enterprise Agent：主动提醒/督促（通知工具）
+    TASK_REMIND = "task_remind"
+
     SMALL_TALK = "small_talk"
 
     UNKNOWN = "unknown"
@@ -54,6 +57,12 @@ class PlanStep(BaseModel):
     description: str = Field(
         default="",
         description="步骤说明"
+    )
+
+    # 风险操作（如对外发邮件/批量通知/修改数据）需用户确认后才执行
+    confirmation_required: bool = Field(
+        default=False,
+        description="是否需用户确认后执行"
     )
 
 

@@ -242,9 +242,35 @@ class AgentPlanner:
                         tool="task_tool",
                         action="create",
                         description="任务发布（解析 → 确认 → 创建）",
+                        confirmation_required=True,
                     ),
                 ],
                 reasoning="任务发布：解析并生成待确认草稿",
+            )
+
+        # 主动提醒/督促（通知工具；发邮件等外部通信需确认）
+        if intent == IntentType.TASK_REMIND:
+
+            remind_action = (
+                intent_result.entities.get("action")
+                or "send_wechat"
+            )
+
+            return PlanResult(
+                kind="task",
+                intent=intent,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="notification_tool",
+                        action=remind_action,
+                        description="主动提醒/督促员工",
+                        confirmation_required=(
+                            remind_action == "send_email"
+                        ),
+                    ),
+                ],
+                reasoning="主动提醒：定向通知员工",
             )
 
         # 闲聊/问候：直接友好回复，不进 legacy 督导流

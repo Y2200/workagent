@@ -245,6 +245,12 @@ class Settings(BaseSettings):
     # 最低提醒风险等级：high / medium / low（只提醒达到该等级及以上的任务）
     task_reminder_min_risk: str = "medium"
 
+    # 是否额外向部门管理员推送高风险任务 digest（Enterprise Agent Phase 4）
+    task_reminder_manager_digest: bool = False
+
+    # 定向督办的部门（留空=全部部门；与 scan_and_remind 的 department 过滤一致）
+    task_reminder_department: str = ""
+
 
     # ======================
     # 邮件（Phase 4）
@@ -280,6 +286,9 @@ class Settings(BaseSettings):
 
     # 周报收件人邮箱（逗号分隔；需 EMAIL_ENABLED=true 才发）
     weekly_report_emails: str = ""
+
+    # 是否向部门经理推送部门周报 digest（Enterprise Agent Phase 4，默认关）
+    weekly_report_manager_digest: bool = False
 
 
     model_config = SettingsConfigDict(

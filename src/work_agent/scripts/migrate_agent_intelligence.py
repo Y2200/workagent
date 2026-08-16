@@ -16,6 +16,7 @@ _ALTER_STATEMENTS = [
     "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS prompt_version VARCHAR(32) DEFAULT ''",
     "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS intent_confidence FLOAT DEFAULT 0",
     "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS tools_called JSON",
+    "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS confirmed BOOLEAN",
 ]
 
 

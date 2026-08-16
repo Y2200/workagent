@@ -178,11 +178,14 @@ class AuditLogger:
             token_usage: int = 0,
             prompt_version: str = "",
             intent_confidence: float = 0.0,
-            tools_called: list | None = None
+            tools_called: list | None = None,
+            confirmed: bool | None = None
     ) -> None:
 
         """
         记录成功完成（含权限拒绝 denied 场景）
+
+        confirmed: 风险操作是否经用户确认（Enterprise Agent，None=不适用）
         """
 
         db = SessionLocal()
@@ -201,6 +204,7 @@ class AuditLogger:
                 prompt_version=prompt_version,
                 intent_confidence=intent_confidence,
                 tools_called=tools_called,
+                confirmed=confirmed,
             )
 
         finally:

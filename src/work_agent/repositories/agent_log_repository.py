@@ -66,7 +66,8 @@ class AgentLogRepository:
             token_usage: int | None = None,
             prompt_version: str | None = None,
             intent_confidence: float | None = None,
-            tools_called: list | None = None
+            tools_called: list | None = None,
+            confirmed: bool | None = None
     ) -> AgentLog | None:
 
         """
@@ -118,6 +119,9 @@ class AgentLogRepository:
 
         if tools_called is not None:
             log.tools_called = tools_called
+
+        if confirmed is not None:
+            log.confirmed = confirmed
 
         db.add(log)
 

@@ -197,6 +197,37 @@ def _department_tasks_text(result: dict) -> str:
     return "\n".join(lines)
 
 
+def _notification_text(result: dict) -> str:
+
+    # SMTP 未启用 → 明确提示（不走失败流程）
+    if result.get("status") == "email_disabled":
+
+        return result.get(
+            "detail",
+            "邮件功能未启用，请联系管理员配置 SMTP",
+        )
+
+    if result.get("status") == "sent":
+
+        return "提醒已发送。"
+
+    if result.get("status") == "failed":
+
+        return (
+            "发送失败："
+            + (result.get("detail") or "未知原因")
+        )
+
+    if result.get("ok") is False:
+
+        return (
+            "发送失败："
+            + (result.get("detail") or "未知原因")
+        )
+
+    return "已发送提醒。"
+
+
 class TaskAgent(BaseAgent):
 
     """
@@ -241,12 +272,43 @@ class TaskAgent(BaseAgent):
             else "list"
         )
 
-        tool_result = self.task_tool.execute(
-            context=context,
-            action=action,
-            query=message,
-            content=message,
+        tool_name = (
+            step.tool
+            if step and step.tool
+            else "task_tool"
         )
+
+        # 按工具分发：task_tool / notification_tool（Enterprise Agent）
+        if tool_name == "task_tool":
+
+            tool_result = self.task_tool.execute(
+                context=context,
+                action=action,
+                query=message,
+                content=message,
+            )
+
+        else:
+
+            from work_agent.agent.tools.registry import tool_registry
+
+            tool = tool_registry.get(tool_name)
+
+            if not tool:
+
+                tool_result = {
+                    "error": "unknown_tool",
+                    "message": f"未注册工具: {tool_name}",
+                }
+
+            else:
+
+                tool_result = tool.execute(
+                    context=context,
+                    action=action,
+                    query=message,
+                    content=message,
+                )
 
         response = self._format_response(
             tool_result,
@@ -262,14 +324,47 @@ class TaskAgent(BaseAgent):
                 tool_result.get("error") == "permission_denied"
             ),
             token_usage=0,
-            tools_called=["task_tool"],
+            tools_called=[tool_name],
             tool_calls=[
                 {
-                    "tool": "task_tool",
+                    "tool": tool_name,
                     "action": action,
                 }
             ],
+            confirmed=self._confirmed_mark(
+                action,
+                tool_result,
+            ),
         )
+
+
+    @staticmethod
+    def _confirmed_mark(
+            action: str,
+            tool_result: dict
+    ) -> bool | None:
+
+        """
+        审计 confirmed 标记（Enterprise Agent 风险操作）
+
+        - create 且待确认 → False（等待用户确认）
+        - confirm 且 task_created → True（已确认并执行）
+        - cancel 且 cancelled_create → False（已取消，未执行）
+        - 其他 → None（不适用）
+        """
+
+        status = tool_result.get("status")
+
+        if action == "create" and status == "awaiting_confirmation":
+            return False
+
+        if action == "confirm" and status == "task_created":
+            return True
+
+        if action == "cancel" and status == "cancelled_create":
+            return False
+
+        return None
 
 
     def _format_response(
@@ -312,6 +407,11 @@ class TaskAgent(BaseAgent):
                 )
 
             return result.get("message", "任务发布处理完成")
+
+        # 主动提醒（企微/邮件）
+        if action in ("send_wechat", "send_email"):
+
+            return _notification_text(result)
 
         # 按部门查任务
         if action == "department_tasks":
