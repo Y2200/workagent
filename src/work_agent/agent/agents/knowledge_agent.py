@@ -110,6 +110,23 @@ class KnowledgeAgent(BaseAgent):
         ]
 
         # ======================
+        # Enterprise Knowledge（Phase 10）：
+        # 权限/资格类问题（"我能不能申请远程办公"）→ 追加用户画像
+        # 制度(RAG) + 用户身份/组织（context 注入，不查 DB 不持久化）
+        # ======================
+
+        user_profile = ""
+
+        from work_agent.agent.organization import (
+            build_user_profile,
+            is_permission_query,
+        )
+
+        if is_permission_query(message):
+
+            user_profile = build_user_profile(context)
+
+        # ======================
         # Response Generation
         # ======================
 
@@ -130,6 +147,10 @@ class KnowledgeAgent(BaseAgent):
             user_context=json.dumps(
                 context.to_user_context(),
                 ensure_ascii=False,
+            ),
+            user_profile=(
+                user_profile
+                or "（无，非权限类问题）"
             ),
         )
 
