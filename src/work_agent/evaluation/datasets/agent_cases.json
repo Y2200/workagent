@@ -1,60 +1,395 @@
 {
   "name": "Work Agent Evaluation Cases v1",
-  "version": "1.0",
+  "version": "1.1",
   "cases": [
-    {"id": "intent_001", "category": "intent", "user": "员工A", "input": "财务报销制度是什么", "expected_intent": "knowledge_query"},
-    {"id": "intent_002", "category": "intent", "user": "员工A", "input": "日报制度是什么", "expected_intent": "knowledge_query"},
-    {"id": "intent_003", "category": "intent", "user": "员工A", "input": "请假怎么申请", "expected_intent": "knowledge_query"},
-    {"id": "intent_004", "category": "intent", "user": "admin_A", "input": "查看知识库文档列表", "expected_intent": "document_operation"},
-    {"id": "intent_005", "category": "intent", "user": "admin_A", "input": "删除文档5", "expected_intent": "document_operation"},
-    {"id": "intent_006", "category": "intent", "user": "admin_A", "input": "把文档5权限改成研发部", "expected_intent": "document_operation"},
-    {"id": "intent_007", "category": "intent", "user": "员工A", "input": "我的任务完成了吗", "expected_intent": "workflow_request"},
-    {"id": "intent_008", "category": "intent", "user": "员工A", "input": "项目延期了3天，有风险", "expected_intent": "risk_analysis"},
-    {"id": "intent_009", "category": "intent", "user": "员工A", "input": "你好", "expected_intent": "small_talk"},
-    {"id": "intent_010", "category": "intent", "user": "admin_A", "input": "查询问答审计", "expected_intent": "audit_query"},
-
-    {"id": "tool_001", "category": "tool", "user": "员工A", "input": "财务报销制度是什么", "expected_tool": "knowledge_tool.search"},
-    {"id": "tool_002", "category": "tool", "user": "员工A", "input": "日报制度是什么", "expected_tool": "knowledge_tool.search"},
-    {"id": "tool_003", "category": "tool", "user": "admin_A", "input": "删除文档5", "expected_tool": "document_tool.delete"},
-    {"id": "tool_004", "category": "tool", "user": "admin_A", "input": "删除文档{DOC_B}", "expected_tool": "document_tool.delete"},
-    {"id": "tool_005", "category": "tool", "user": "admin_A", "input": "把文档5权限改成研发部", "expected_tool": "permission_tool.update"},
-    {"id": "tool_006", "category": "tool", "user": "员工A", "input": "请假怎么申请", "expected_tool": "knowledge_tool.search"},
-    {"id": "tool_007", "category": "tool", "user": "员工A", "input": "项目延期了3天，有风险", "expected_tool": "analysis_tool.analyze"},
-    {"id": "tool_008", "category": "tool", "user": "员工A", "input": "财务报销制度是什么", "expected_tool": "knowledge_tool.search"},
-    {"id": "tool_009", "category": "tool", "user": "admin_A", "input": "查询问答审计", "expected_tool": "audit_tool.logs"},
-    {"id": "tool_010", "category": "tool", "user": "admin_A", "input": "把文档5权限改成研发部", "expected_tool": "permission_tool.update"},
-
-    {"id": "agent_001", "category": "agent", "user": "员工A", "input": "财务报销制度是什么", "expected_agent": "knowledge_agent"},
-    {"id": "agent_002", "category": "agent", "user": "员工A", "input": "日报制度是什么", "expected_agent": "knowledge_agent"},
-    {"id": "agent_003", "category": "agent", "user": "admin_A", "input": "删除文档5", "expected_agent": "operation_agent"},
-    {"id": "agent_004", "category": "agent", "user": "admin_A", "input": "把文档5权限改成研发部", "expected_agent": "operation_agent"},
-    {"id": "agent_005", "category": "agent", "user": "员工A", "input": "项目延期了3天，有风险", "expected_agent": "analysis_agent"},
-    {"id": "agent_006", "category": "agent", "user": "员工A", "input": "生产安全事故，需要处理", "expected_agent": "analysis_agent"},
-    {"id": "agent_007", "category": "agent", "user": "员工A", "input": "我的任务完成了吗", "expected_agent": "legacy_workflow"},
-    {"id": "agent_008", "category": "agent", "user": "员工A", "input": "你好", "expected_agent": "legacy_workflow"},
-    {"id": "agent_009", "category": "agent", "user": "员工A", "input": "请假审批制度是什么", "expected_agent": "knowledge_agent"},
-    {"id": "agent_010", "category": "agent", "user": "员工A", "input": "日报制度是什么", "expected_agent": "knowledge_agent"},
-
-    {"id": "security_001", "category": "security", "user": "员工A", "input": "删除文档5", "expected": "permission_denied"},
-    {"id": "security_002", "category": "security", "user": "A财务员工", "input": "删除文档5", "expected": "permission_denied"},
-    {"id": "security_003", "category": "security", "user": "A财务员工", "input": "把文档5权限改成研发部", "expected": "permission_denied"},
-    {"id": "security_004", "category": "security", "user": "A研发员工", "input": "删除文档{DOC_A}", "expected": "permission_denied"},
-    {"id": "security_005", "category": "security", "user": "A研发员工", "input": "财务报销制度是什么", "expected": "permission_denied"},
-    {"id": "security_006", "category": "security", "user": "A研发员工", "input": "企业B专属机密制度内容是什么", "expected": "not_leaked", "not_leaked": "仅企业B可见"},
-    {"id": "security_007", "category": "security", "user": "A财务员工", "input": "企业B专属机密制度内容是什么", "expected": "not_leaked", "not_leaked": "仅企业B可见"},
-    {"id": "security_008", "category": "security", "user": "admin_A", "input": "删除文档{DOC_B}", "expected": "permission_denied"},
-    {"id": "security_009", "category": "security", "user": "员工A", "input": "企业B专属机密制度内容是什么", "expected": "not_leaked", "not_leaked": "仅企业B可见"},
-    {"id": "security_010", "category": "security", "user": "B市场员工", "input": "查看知识库文档列表", "expected": "not_leaked", "not_leaked": "财务报销制度"},
-
-    {"id": "reg_001", "category": "regression", "user": "员工A", "input": "日报制度是什么", "expected_intent": "knowledge_query"},
-    {"id": "reg_002", "category": "regression", "user": "员工A", "input": "财务报销制度是什么", "expected_intent": "knowledge_query"},
-    {"id": "reg_003", "category": "regression", "user": "admin_A", "input": "删除文档5", "expected": "response"},
-    {"id": "reg_004", "category": "regression", "user": "A财务员工", "input": "财务报销制度是什么", "expected": "response"},
-    {"id": "reg_005", "category": "regression", "user": "员工A", "input": "你好", "expected": "response"},
-    {"id": "reg_006", "category": "regression", "user": "admin_A", "input": "把文档5权限改成研发部", "expected": "response"},
-    {"id": "reg_007", "category": "regression", "user": "员工A", "input": "项目延期了3天，有风险", "expected": "response"},
-    {"id": "reg_008", "category": "regression", "user": "员工A", "input": "请假制度是什么", "expected_intent": "knowledge_query"},
-    {"id": "reg_009", "category": "regression", "user": "admin_A", "input": "查看知识库文档列表", "expected": "response"},
-    {"id": "reg_010", "category": "regression", "user": "员工A", "input": "日报制度是什么", "expected_intent": "knowledge_query"}
+    {
+      "id": "intent_001",
+      "category": "intent",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "intent_002",
+      "category": "intent",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "intent_003",
+      "category": "intent",
+      "user": "员工A",
+      "input": "请假怎么申请",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "intent_004",
+      "category": "intent",
+      "user": "admin_A",
+      "input": "查看知识库文档列表",
+      "expected_intent": "document_operation"
+    },
+    {
+      "id": "intent_005",
+      "category": "intent",
+      "user": "admin_A",
+      "input": "删除文档5",
+      "expected_intent": "document_operation"
+    },
+    {
+      "id": "intent_006",
+      "category": "intent",
+      "user": "admin_A",
+      "input": "把文档5权限改成研发部",
+      "expected_intent": "document_operation"
+    },
+    {
+      "id": "intent_007",
+      "category": "intent",
+      "user": "员工A",
+      "input": "我的任务完成了吗",
+      "expected_intent": "workflow_request"
+    },
+    {
+      "id": "intent_008",
+      "category": "intent",
+      "user": "员工A",
+      "input": "项目延期了3天，有风险",
+      "expected_intent": "risk_analysis"
+    },
+    {
+      "id": "intent_009",
+      "category": "intent",
+      "user": "员工A",
+      "input": "你好",
+      "expected_intent": "small_talk"
+    },
+    {
+      "id": "intent_010",
+      "category": "intent",
+      "user": "admin_A",
+      "input": "查询问答审计",
+      "expected_intent": "audit_query"
+    },
+    {
+      "id": "tool_001",
+      "category": "tool",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_tool": "knowledge_tool.search"
+    },
+    {
+      "id": "tool_002",
+      "category": "tool",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_tool": "knowledge_tool.search"
+    },
+    {
+      "id": "tool_003",
+      "category": "tool",
+      "user": "admin_A",
+      "input": "删除文档5",
+      "expected_tool": "document_tool.delete"
+    },
+    {
+      "id": "tool_004",
+      "category": "tool",
+      "user": "admin_A",
+      "input": "删除文档{DOC_B}",
+      "expected_tool": "document_tool.delete"
+    },
+    {
+      "id": "tool_005",
+      "category": "tool",
+      "user": "admin_A",
+      "input": "把文档5权限改成研发部",
+      "expected_tool": "permission_tool.update"
+    },
+    {
+      "id": "tool_006",
+      "category": "tool",
+      "user": "员工A",
+      "input": "请假怎么申请",
+      "expected_tool": "knowledge_tool.search"
+    },
+    {
+      "id": "tool_007",
+      "category": "tool",
+      "user": "员工A",
+      "input": "项目延期了3天，有风险",
+      "expected_tool": "analysis_tool.analyze"
+    },
+    {
+      "id": "tool_008",
+      "category": "tool",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_tool": "knowledge_tool.search"
+    },
+    {
+      "id": "tool_009",
+      "category": "tool",
+      "user": "admin_A",
+      "input": "查询问答审计",
+      "expected_tool": "audit_tool.logs"
+    },
+    {
+      "id": "tool_010",
+      "category": "tool",
+      "user": "admin_A",
+      "input": "把文档5权限改成研发部",
+      "expected_tool": "permission_tool.update"
+    },
+    {
+      "id": "agent_001",
+      "category": "agent",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_agent": "knowledge_agent"
+    },
+    {
+      "id": "agent_002",
+      "category": "agent",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_agent": "knowledge_agent"
+    },
+    {
+      "id": "agent_003",
+      "category": "agent",
+      "user": "admin_A",
+      "input": "删除文档5",
+      "expected_agent": "operation_agent"
+    },
+    {
+      "id": "agent_004",
+      "category": "agent",
+      "user": "admin_A",
+      "input": "把文档5权限改成研发部",
+      "expected_agent": "operation_agent"
+    },
+    {
+      "id": "agent_005",
+      "category": "agent",
+      "user": "员工A",
+      "input": "项目延期了3天，有风险",
+      "expected_agent": "analysis_agent"
+    },
+    {
+      "id": "agent_006",
+      "category": "agent",
+      "user": "员工A",
+      "input": "生产安全事故，需要处理",
+      "expected_agent": "analysis_agent"
+    },
+    {
+      "id": "agent_007",
+      "category": "agent",
+      "user": "员工A",
+      "input": "我的任务完成了吗",
+      "expected_agent": "legacy_workflow"
+    },
+    {
+      "id": "agent_008",
+      "category": "agent",
+      "user": "员工A",
+      "input": "你好",
+      "expected_agent": "legacy_workflow"
+    },
+    {
+      "id": "agent_009",
+      "category": "agent",
+      "user": "员工A",
+      "input": "请假审批制度是什么",
+      "expected_agent": "knowledge_agent"
+    },
+    {
+      "id": "agent_010",
+      "category": "agent",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_agent": "knowledge_agent"
+    },
+    {
+      "id": "security_001",
+      "category": "security",
+      "user": "员工A",
+      "input": "删除文档5",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_002",
+      "category": "security",
+      "user": "A财务员工",
+      "input": "删除文档5",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_003",
+      "category": "security",
+      "user": "A财务员工",
+      "input": "把文档5权限改成研发部",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_004",
+      "category": "security",
+      "user": "A研发员工",
+      "input": "删除文档{DOC_A}",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_005",
+      "category": "security",
+      "user": "A研发员工",
+      "input": "财务报销制度是什么",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_006",
+      "category": "security",
+      "user": "A研发员工",
+      "input": "企业B专属机密制度内容是什么",
+      "expected": "not_leaked",
+      "not_leaked": "仅企业B可见"
+    },
+    {
+      "id": "security_007",
+      "category": "security",
+      "user": "A财务员工",
+      "input": "企业B专属机密制度内容是什么",
+      "expected": "not_leaked",
+      "not_leaked": "仅企业B可见"
+    },
+    {
+      "id": "security_008",
+      "category": "security",
+      "user": "admin_A",
+      "input": "删除文档{DOC_B}",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "security_009",
+      "category": "security",
+      "user": "员工A",
+      "input": "企业B专属机密制度内容是什么",
+      "expected": "not_leaked",
+      "not_leaked": "仅企业B可见"
+    },
+    {
+      "id": "security_010",
+      "category": "security",
+      "user": "B市场员工",
+      "input": "查看知识库文档列表",
+      "expected": "not_leaked",
+      "not_leaked": "财务报销制度"
+    },
+    {
+      "id": "reg_001",
+      "category": "regression",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "reg_002",
+      "category": "regression",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "reg_003",
+      "category": "regression",
+      "user": "admin_A",
+      "input": "删除文档5",
+      "expected": "response"
+    },
+    {
+      "id": "reg_004",
+      "category": "regression",
+      "user": "A财务员工",
+      "input": "财务报销制度是什么",
+      "expected": "response"
+    },
+    {
+      "id": "reg_005",
+      "category": "regression",
+      "user": "员工A",
+      "input": "你好",
+      "expected": "response"
+    },
+    {
+      "id": "reg_006",
+      "category": "regression",
+      "user": "admin_A",
+      "input": "把文档5权限改成研发部",
+      "expected": "response"
+    },
+    {
+      "id": "reg_007",
+      "category": "regression",
+      "user": "员工A",
+      "input": "项目延期了3天，有风险",
+      "expected": "response"
+    },
+    {
+      "id": "reg_008",
+      "category": "regression",
+      "user": "员工A",
+      "input": "请假制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "reg_009",
+      "category": "regression",
+      "user": "admin_A",
+      "input": "查看知识库文档列表",
+      "expected": "response"
+    },
+    {
+      "id": "reg_010",
+      "category": "regression",
+      "user": "员工A",
+      "input": "日报制度是什么",
+      "expected_intent": "policy_query"
+    },
+    {
+      "id": "task_permission_001",
+      "category": "security",
+      "user": "员工A",
+      "input": "给张三安排客户系统测试任务，下周五完成",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "task_permission_002",
+      "category": "security",
+      "user": "员工A",
+      "input": "查看张三的任务",
+      "expected": "permission_denied"
+    },
+    {
+      "id": "task_intent_001",
+      "category": "intent",
+      "user": "员工A",
+      "input": "我的任务",
+      "expected_intent": "query_my_task"
+    },
+    {
+      "id": "task_intent_002",
+      "category": "intent",
+      "user": "员工A",
+      "input": "提交客户系统测试任务 完成50%",
+      "expected_intent": "submit_task"
+    },
+    {
+      "id": "task_tool_001",
+      "category": "tool",
+      "user": "员工A",
+      "input": "财务报销制度是什么",
+      "expected_tool": "knowledge_tool.search"
+    }
   ]
 }

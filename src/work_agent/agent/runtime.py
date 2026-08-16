@@ -17,6 +17,7 @@ from work_agent.agent.agents.supervisor import supervisor_agent
 from work_agent.agent.context import AgentContext
 from work_agent.agent.planner import agent_planner
 from work_agent.agent.router.intent_router import IntentRouter
+from work_agent.agent.schemas import IntentType
 from work_agent.agent.tools.registry import tool_registry
 from work_agent.config import settings
 from work_agent.core.audit_logger import audit_logger

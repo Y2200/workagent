@@ -377,7 +377,8 @@ class IntentRouter:
 
             return {"action": "submit"}
 
-        if "完成" in msg:
+        # "完成" 但疑问句（"完成了吗"）是状态查询，非提交完成
+        if "完成" in msg and not msg.strip().endswith("吗"):
 
             return {"action": "complete"}
 
@@ -487,6 +488,26 @@ class IntentRouter:
             "取消",
             "完成任务",
         ]
+
+        # 泛化提交/完成判断：消息含任务意图动作词（提交/完成/进度/确认）+ 非知识语境
+        # 提前拦截，避免被 knowledge 关键词（如"提交"）抢走
+        # 排除："我的任务"查询语境 / 疑问句（"完成了吗"是状态查询非提交）
+        if (
+            ("提交" in msg or "完成" in msg or "进度" in msg)
+            and ("任务" in msg or msg.strip() in ("确认", "取消"))
+            and "我的任务" not in msg
+            and not msg.strip().endswith("吗")
+            and not any(kw in msg for kw in ("制度", "政策", "流程", "报销", "请假"))
+        ):
+
+            return IntentResult(
+                intent=IntentType.SUBMIT_TASK,
+                confidence=0.6,
+                need_tool=True,
+                tool="task_tool",
+                entities=self._task_action_entities(msg),
+                reasoning="规则回退：命中任务提交/完成关键词",
+            )
 
         if any(
                 keyword in msg

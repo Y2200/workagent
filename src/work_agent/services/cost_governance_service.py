@@ -181,16 +181,19 @@ class CostGovernanceService:
         用量分析：今日 + 本月（按模型/用户）
         """
 
-        now = datetime.now()
+        # DB created_at 由 server_default=func.now() 生成（Postgres UTC）。
+        # 时区对齐：today/month 边界用 UTC，避免本地时区（UTC+8）凌晨时
+        # today 归零而记录落在 month（跨午夜不一致）
+        utc_now = datetime.utcnow()
 
         today_start = datetime.combine(
-            date.today(),
+            utc_now.date(),
             time.min,
         )
 
         month_start = datetime(
-            now.year,
-            now.month,
+            utc_now.year,
+            utc_now.month,
             1,
         )
 
