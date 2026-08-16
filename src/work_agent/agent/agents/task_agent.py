@@ -146,6 +146,30 @@ def _confirmation_text(task: dict, parsed: dict) -> str:
     return "\n".join(lines)
 
 
+def _employee_tasks_text(result: dict) -> str:
+
+    employee = result.get("employee", "")
+
+    tasks = result.get("tasks", [])
+
+    if not tasks:
+
+        return f"{employee or '该员工'}当前没有任务。"
+
+    lines = [
+        f"{employee or '该员工'}的任务：",
+    ]
+
+    for i, t in enumerate(tasks, 1):
+
+        lines.append(
+            f"{i}. {t['title']}  "
+            f"进度 {t['progress']}%  截止 {_format_deadline(t.get('deadline'))}"
+        )
+
+    return "\n".join(lines)
+
+
 def _department_tasks_text(result: dict) -> str:
 
     department = result.get("department", "")
@@ -412,6 +436,11 @@ class TaskAgent(BaseAgent):
         if action in ("send_wechat", "send_email"):
 
             return _notification_text(result)
+
+        # 按员工查任务
+        if action == "employee_tasks":
+
+            return _employee_tasks_text(result)
 
         # 按部门查任务
         if action == "department_tasks":

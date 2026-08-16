@@ -1,4 +1,5 @@
 import json
+import re
 
 from work_agent.agent.context import AgentContext
 from work_agent.agent.llm import get_llm
@@ -203,6 +204,7 @@ class AgentPlanner:
                 "cancel",
                 "complete",
                 "department_tasks",
+                "employee_tasks",
             ):
 
                 # LLM 未给出 action 时从消息推断（确定性兜底）
@@ -395,6 +397,14 @@ def _infer_task_action(
     if "部门任务" in msg or "部门情况" in msg:
 
         return "department_tasks"
+
+    # 查看指定员工任务：「查看张三的任务」等（非"我的任务"）
+    if (
+        re.search(r"(?:查看|查|看).+的\s*任务", msg)
+        and "我的任务" not in msg
+    ):
+
+        return "employee_tasks"
 
     if "提交" in msg or "进度" in msg:
 

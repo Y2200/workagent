@@ -257,17 +257,52 @@ def test_d_department_tasks():
         assert "error" not in r3, r3
         assert any(t["id"] == task.id for t in r3["tasks"])
 
-        # 普通员工（USER）查部门任务 → 无部门维度，按权限码放行？USER 有 task:view，
-        # 但业务上员工不应查部门。这里按设计：USER 无 DEPARTMENT_ADMIN role → check_department_scope 放行，
-        # 但权限码仍 task:view。实际部门维度限制靠 role。测试记录行为即可。
+        # 普通员工（USER）查部门任务 → 拒绝（权限不足）
         ctx_user = _ctx(
             permissions={"task:view"}, role_codes={"USER"},
             tenant_id="1", department="研发部",
         )
         r4 = tool.execute(context=ctx_user, action="department_tasks", department="研发部")
-        assert "error" not in r4, r4  # USER 不限制部门（由前端/权限码约束）
+        assert r4["error"] == "permission_denied", r4
 
-        print("✓ PartD department_tasks（本部门可见/跨部门拒绝/管理员全量）")
+        print("✓ PartD department_tasks（本部门可见/跨部门拒绝/管理员全量/员工拒绝）")
+
+        # employee_tasks：部门经理查指定员工任务（按姓名）
+        r_emp = tool.execute(
+            context=ctx_dept,
+            action="employee_tasks",
+            query=f"查看{dept_emp.real_name}的任务",
+        )
+        assert "error" not in r_emp, r_emp
+        assert r_emp["employee"] == dept_emp.real_name, r_emp
+        assert any(t["id"] == task.id for t in r_emp["tasks"]), r_emp
+
+        # employee_tasks：跨部门员工 → 拒绝
+        ctx_dept_rd = _ctx(
+            permissions={"task:view"}, role_codes={"DEPARTMENT_ADMIN"},
+            tenant_id="1", department="研发部",
+        )
+        finance = _db_user("A财务员工")
+        r_emp2 = tool.execute(
+            context=ctx_dept_rd,
+            action="employee_tasks",
+            query=f"查看{finance.real_name}的任务",
+        )
+        assert r_emp2["error"] == "permission_denied", r_emp2
+
+        # employee_tasks：普通员工 → 拒绝
+        ctx_user2 = _ctx(
+            permissions={"task:view"}, role_codes={"USER"},
+            tenant_id="1", department="研发部",
+        )
+        r_emp3 = tool.execute(
+            context=ctx_user2,
+            action="employee_tasks",
+            query=f"查看{dept_emp.real_name}的任务",
+        )
+        assert r_emp3["error"] == "permission_denied", r_emp3
+
+        print("✓ PartD2 employee_tasks（按姓名查/跨部门拒绝/员工拒绝）")
     finally:
         # 清理测试任务
         from work_agent.core.container import task_service as ts
@@ -546,6 +581,21 @@ def test_f_intent_planning():
     assert plan.steps[0].tool == "task_tool", plan.steps
     assert plan.steps[0].action == "create", plan.steps
     print("✓ PartF task_create 意图路由 + plan")
+
+    # employee_tasks：查看指定员工任务
+    intent_emp = router._fallback("查看张三的任务")
+    assert intent_emp.intent == "task_management", intent_emp.intent
+    assert intent_emp.entities.get("action") == "employee_tasks", intent_emp.entities
+
+    plan_emp = agent_planner.plan(
+        message="查看张三的任务",
+        intent_result=intent_emp,
+        context=ctx,
+    )
+    assert plan_emp.kind == "task", plan_emp.kind
+    assert plan_emp.steps[0].tool == "task_tool", plan_emp.steps
+    assert plan_emp.steps[0].action == "employee_tasks", plan_emp.steps
+    print("✓ PartF2 employee_tasks 意图路由 + plan")
 
 
 def test_e2_deadline_parse():
