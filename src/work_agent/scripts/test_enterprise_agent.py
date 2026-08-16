@@ -568,9 +568,9 @@ def test_f_intent_planning():
 
     router = IntentRouter()
 
-    # 规则回退路径（不依赖 LLM，确定性）：安排 + 任务 → task_create
+    # 规则回退路径（不依赖 LLM，确定性）：安排 + 任务 → create_task
     intent = router._fallback("给张三安排客户系统测试任务")
-    assert intent.intent == "task_create", intent.intent
+    assert intent.intent == "create_task", intent.intent
 
     plan = agent_planner.plan(
         message="给张三安排客户系统测试任务，下周五完成",
@@ -584,7 +584,7 @@ def test_f_intent_planning():
 
     # employee_tasks：查看指定员工任务
     intent_emp = router._fallback("查看张三的任务")
-    assert intent_emp.intent == "task_management", intent_emp.intent
+    assert intent_emp.intent == "query_employee_task", intent_emp.intent
     assert intent_emp.entities.get("action") == "employee_tasks", intent_emp.entities
 
     plan_emp = agent_planner.plan(

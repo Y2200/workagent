@@ -6,8 +6,8 @@ Prompt 元数据注册表
 
 PROMPT_METADATA = {
     "intent_router": {
-        "version": "1.0",
-        "description": "意图识别",
+        "version": "1.1",
+        "description": "意图识别（企业任务意图拆分 Phase 7A）",
         "variables": [
             "message",
             "user_context",
