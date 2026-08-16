@@ -339,8 +339,35 @@ def test_d_isolation_and_fault_tolerance():
     print("✓ PartD 跨用户隔离 + 异常容错")
 
 
+def test_e_follow_up_routing():
+    """Part E：指代词追问路由到 knowledge（防退化到 legacy 督导）"""
+    from work_agent.agent.router.intent_router import IntentRouter
+    from work_agent.agent.schemas import IntentType
+
+    router = IntentRouter()
+
+    # 追问 → knowledge_query
+    r = router._follow_up_override("那经理呢？")
+    assert r is not None
+    assert r.intent == IntentType.KNOWLEDGE_QUERY, r.intent
+    assert r.tool == "knowledge_tool", r.tool
+
+    # 指代词变体
+    assert router._follow_up_override("这个制度呢") is not None
+    assert router._follow_up_override("多少钱？") is not None
+
+    # 独立问题 → 不覆盖（返回 None）
+    assert router._follow_up_override("差旅住宿标准是什么") is None
+    assert router._follow_up_override("报销流程怎么走") is None
+
+    # 任务语境追问 → 不覆盖（走任务逻辑）
+    assert router._follow_up_override("那我的任务呢") is None
+
+    print("✓ PartE 追问路由到 knowledge（排除任务语境）")
+
+
 def test():
-    print("== RAG 会话记忆测试（Phase 1-4）==")
+    print("== RAG 会话记忆测试（Phase 1-5）==")
     _cleanup()
     try:
         test_a_storage_and_window()
@@ -349,9 +376,10 @@ def test():
         test_b2_rewrite_retrieval()
         test_c_task_shared_context()
         test_d_isolation_and_fault_tolerance()
+        test_e_follow_up_routing()
     finally:
         _cleanup()
-    print("RAG 会话记忆测试（Phase 1-4）通过")
+    print("RAG 会话记忆测试（Phase 1-5）通过")
 
 
 if __name__ == "__main__":

@@ -118,6 +118,16 @@ class IntentRouter:
 
                 return override
 
+            # 指代词追问（"那经理呢？"）→ 强制知识查询（rewrite 在 KnowledgeAgent 处理）
+            # LLM 对短追问无状态，无法感知上一轮制度；此处确定性路由到 knowledge
+            follow_up = self._follow_up_override(
+                message
+            )
+
+            if follow_up:
+
+                return follow_up
+
             return result
 
         except Exception:
@@ -298,6 +308,47 @@ class IntentRouter:
             )
 
         return None
+
+
+    def _follow_up_override(
+            self,
+            message: str
+    ) -> IntentResult | None:
+
+        """
+        指代词追问（"那经理呢？""这个制度呢"）→ 强制知识查询
+
+        会话记忆中 rewrite 在 KnowledgeAgent 内处理；但短追问若被 LLM/规则
+        路由到其他意图（如 legacy 督导），rewrite 无从执行。此处确定性
+        把指代词追问路由到 knowledge_query（KnowledgeAgent 会结合历史改写）。
+
+        排除任务语境（含"任务/进度/完成"→ 可能是任务追问，走原任务逻辑）。
+        """
+
+        from work_agent.agent.query_rewriter import QueryRewriter
+
+        msg = message.strip()
+
+        if not msg:
+            return None
+
+        # 任务语境追问不覆盖（如"那我的任务呢"）
+        if any(
+            kw in msg
+            for kw in ("任务", "进度", "完成")
+        ):
+            return None
+
+        if not QueryRewriter._is_follow_up(msg):
+            return None
+
+        return IntentResult(
+            intent=IntentType.KNOWLEDGE_QUERY,
+            confidence=0.7,
+            need_tool=True,
+            tool="knowledge_tool",
+            reasoning="指代词追问：路由到知识查询（rewrite 补全）",
+        )
 
 
     @staticmethod
