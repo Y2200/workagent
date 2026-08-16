@@ -90,12 +90,13 @@ PROMPT_METADATA = {
     # 未来 Prompt（Phase 4 规划）
     # ======================
     "knowledge_answer": {
-        "version": "1.0",
-        "description": "知识库回答",
+        "version": "1.1",
+        "description": "知识库回答（Phase 10：权限类问题结合用户画像）",
         "variables": [
             "query",
             "knowledge",
             "user_context",
+            "user_profile",
         ],
     },
     "tool_selector": {
