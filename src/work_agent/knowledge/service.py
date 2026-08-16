@@ -1,3 +1,4 @@
+from work_agent.core.utils import build_tenant_filter
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.document_repository import DocumentRepository
 
@@ -45,9 +46,10 @@ class KnowledgeService:
             filters.append(filter)
 
         # 注意：空串也是有效租户（默认租户），必须用 is not None 判断
+        # 空租户文档全局可见 + 用户自己租户（单企业一套知识库，权限靠文档级 access）
         if tenant_id is not None:
             filters.append(
-                f'metadata["tenant_id"] == "{_escape(tenant_id)}"'
+                build_tenant_filter(tenant_id)
             )
 
         combined_filter = " && ".join(filters)
@@ -93,16 +95,3 @@ class KnowledgeService:
             db.close()
 
         return hits
-
-
-def _escape(value: str) -> str:
-
-    """
-    Milvus filter 字符串字面量转义
-    """
-
-    return (
-        value
-        .replace("\\", "\\\\")
-        .replace('"', '\\"')
-    )
