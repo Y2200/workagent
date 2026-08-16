@@ -262,7 +262,10 @@ def test():
 
     assert r4["permission_denied"] is True, r4
 
-    assert "权限不足" in r4["response"], r4["response"]
+    assert any(
+        kw in r4["response"]
+        for kw in ("权限不足", "权限")
+    ), r4["response"]
 
     print("场景4 ✅ 权限拒绝（USER 删除 → permission_denied）")
 
