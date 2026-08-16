@@ -259,17 +259,59 @@ def test_b2_rewrite_retrieval():
         document_service.delete(doc.id, tenant_id="1")
 
 
+def test_c_task_shared_context():
+    """Part C：任务链路共享上下文（chat_history 辅助理解，业务决策隔离）"""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from work_agent.core.container import task_service
+
+    # 构造历史：上一轮查了制度
+    history = [
+        HumanMessage(content="差旅报销制度是什么"),
+        AIMessage(content="根据制度，员工住宿标准每晚不超过400元"),
+    ]
+
+    # preview_create_task 接受 chat_history 不破坏原有解析
+    # 业务决策隔离：执行人/日期仍确定性解析，不因历史改变
+    r = task_service.preview_create_task(
+        creator_id=999999,
+        creator_tenant_id="1",
+        content="给A研发员工安排安全培训任务，下周五完成",
+        chat_history=history,
+    )
+    assert r["status"] == "awaiting_confirmation", r
+    draft = r["draft"]
+    assert draft["employee_name"] == "A研发员工", draft  # 确定性解析，不因历史变
+    assert draft["deadline"] is not None, draft  # 下周五解析
+
+    # 无 chat_history 时行为不变（向后兼容）
+    r2 = task_service.preview_create_task(
+        creator_id=999999,
+        creator_tenant_id="1",
+        content="给A研发员工安排接口开发任务",
+        chat_history=None,
+    )
+    assert r2["status"] == "awaiting_confirmation", r2
+    assert "接口开发" in r2["draft"]["title"], r2
+
+    # 清理草稿
+    task_service.cancel_pending_create(creator_id=999999)
+
+    print("✓ PartC 任务链路共享上下文（业务决策隔离）")
+
+
 def test():
-    print("== RAG 会话记忆测试（Phase 1-2）==")
+    print("== RAG 会话记忆测试（Phase 1-3）==")
     _cleanup()
     try:
         test_a_storage_and_window()
         test_a2_empty_and_scope()
         test_b_query_rewrite()
         test_b2_rewrite_retrieval()
+        test_c_task_shared_context()
     finally:
         _cleanup()
-    print("RAG 会话记忆测试（Phase 1-2）通过")
+    print("RAG 会话记忆测试（Phase 1-3）通过")
 
 
 if __name__ == "__main__":
