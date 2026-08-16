@@ -19,15 +19,20 @@ class IntentRouter:
     """
 
     # 意图 → (默认工具, 是否需要工具)
+    # 企业任务意图拆分（Phase 7A）；兼容别名指向同一值
     INTENT_TOOL_MAP = {
         IntentType.KNOWLEDGE_QUERY: ("knowledge_tool", True),
         IntentType.DOCUMENT_OPERATION: ("document_tool", True),
         IntentType.AUDIT_QUERY: ("audit_tool", True),
         IntentType.WORKFLOW_REQUEST: ("", False),
         IntentType.RISK_ANALYSIS: ("", False),
-        IntentType.TASK_MANAGEMENT: ("task_tool", True),
-        IntentType.TASK_CREATE: ("task_tool", True),
-        IntentType.TASK_REMIND: ("notification_tool", True),
+        IntentType.QUERY_MY_TASK: ("task_tool", True),
+        IntentType.QUERY_EMPLOYEE_TASK: ("task_tool", True),
+        IntentType.CREATE_TASK: ("task_tool", True),
+        IntentType.SUBMIT_TASK: ("task_tool", True),
+        IntentType.REMIND_TASK: ("notification_tool", True),
+        IntentType.SUMMARY_TASK: ("task_tool", True),
+        IntentType.POLICY_QUERY: ("knowledge_tool", True),
         IntentType.SMALL_TALK: ("", False),
         IntentType.UNKNOWN: ("", False),
     }
@@ -66,7 +71,7 @@ class IntentRouter:
         if task_match:
 
             return IntentResult(
-                intent=IntentType.TASK_MANAGEMENT,
+                intent=IntentType.QUERY_MY_TASK,
                 confidence=0.95,
                 need_tool=True,
                 tool="task_tool",
@@ -288,7 +293,7 @@ class IntentRouter:
         if msg in ("确认", "确定") or msg.startswith("确认"):
 
             return IntentResult(
-                intent=IntentType.TASK_MANAGEMENT,
+                intent=IntentType.SUBMIT_TASK,
                 confidence=0.9,
                 need_tool=True,
                 tool="task_tool",
@@ -299,7 +304,7 @@ class IntentRouter:
         if msg in ("取消",) or msg.startswith("取消"):
 
             return IntentResult(
-                intent=IntentType.TASK_MANAGEMENT,
+                intent=IntentType.SUBMIT_TASK,
                 confidence=0.9,
                 need_tool=True,
                 tool="task_tool",
@@ -412,7 +417,7 @@ class IntentRouter:
         ):
 
             return IntentResult(
-                intent=IntentType.TASK_CREATE,
+                intent=IntentType.CREATE_TASK,
                 confidence=0.6,
                 need_tool=True,
                 tool="task_tool",
@@ -427,7 +432,7 @@ class IntentRouter:
         ):
 
             return IntentResult(
-                intent=IntentType.TASK_MANAGEMENT,
+                intent=IntentType.QUERY_EMPLOYEE_TASK,
                 confidence=0.6,
                 need_tool=True,
                 tool="task_tool",
@@ -447,12 +452,27 @@ class IntentRouter:
         ):
 
             return IntentResult(
-                intent=IntentType.TASK_REMIND,
+                intent=IntentType.REMIND_TASK,
                 confidence=0.6,
                 need_tool=True,
                 tool="notification_tool",
                 entities={"action": "send_wechat"},
                 reasoning="规则回退：命中主动提醒关键词",
+            )
+
+        # 任务汇总/周报（部门经理/系统）
+        if (
+            ("周报" in msg or "汇总" in msg or "总结" in msg)
+            and "任务" in msg
+        ):
+
+            return IntentResult(
+                intent=IntentType.SUMMARY_TASK,
+                confidence=0.6,
+                need_tool=True,
+                tool="task_tool",
+                entities={"action": "summary"},
+                reasoning="规则回退：命中任务汇总关键词",
             )
 
         task_keywords = [
@@ -473,8 +493,26 @@ class IntentRouter:
                 for keyword in task_keywords
         ):
 
+            # 任务关键词：按动作拆 intent（提交类 → SUBMIT_TASK，查看类 → QUERY_MY_TASK）
+            action = self._task_action_entities(msg).get(
+                "action",
+                "list",
+            )
+
+            task_intent = (
+                IntentType.SUBMIT_TASK
+                if action in (
+                    "submit",
+                    "submit_all",
+                    "confirm",
+                    "cancel",
+                    "complete",
+                )
+                else IntentType.QUERY_MY_TASK
+            )
+
             return IntentResult(
-                intent=IntentType.TASK_MANAGEMENT,
+                intent=task_intent,
                 confidence=0.6,
                 need_tool=True,
                 tool="task_tool",

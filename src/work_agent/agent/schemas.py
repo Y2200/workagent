@@ -5,9 +5,15 @@ class IntentType:
 
     """
     意图类型常量
+
+    企业任务执行模型（Phase 7A）：
+    - 任务意图拆分（query_my/query_employee/create/submit/remind/summary）
+    - POLICY_QUERY = 制度查询
+    - 兼容别名（TASK_MANAGEMENT/TASK_CREATE/TASK_REMIND/KNOWLEDGE_QUERY）
+      值即新值，代码内统一用新常量
     """
 
-    KNOWLEDGE_QUERY = "knowledge_query"
+    KNOWLEDGE_QUERY = "policy_query"
 
     DOCUMENT_OPERATION = "document_operation"
 
@@ -17,17 +23,44 @@ class IntentType:
 
     RISK_ANALYSIS = "risk_analysis"
 
-    TASK_MANAGEMENT = "task_management"
+    # ======================
+    # 企业任务意图（Phase 7A）
+    # ======================
 
-    # Enterprise Agent：任务发布（管理员，带确认）
-    TASK_CREATE = "task_create"
+    # 员工查自己的任务
+    QUERY_MY_TASK = "query_my_task"
 
-    # Enterprise Agent：主动提醒/督促（通知工具）
-    TASK_REMIND = "task_remind"
+    # 经理查员工/部门任务
+    QUERY_EMPLOYEE_TASK = "query_employee_task"
+
+    # 经理发布任务（带确认）
+    CREATE_TASK = "create_task"
+
+    # 员工提交/确认/取消/完成进度
+    SUBMIT_TASK = "submit_task"
+
+    # 经理提醒/督促员工
+    REMIND_TASK = "remind_task"
+
+    # 系统生成部门任务总结
+    SUMMARY_TASK = "summary_task"
+
+    # 制度查询
+    POLICY_QUERY = "policy_query"
 
     SMALL_TALK = "small_talk"
 
     UNKNOWN = "unknown"
+
+    # ======================
+    # 兼容别名（值即新值）
+    # ======================
+
+    TASK_MANAGEMENT = QUERY_MY_TASK
+
+    TASK_CREATE = CREATE_TASK
+
+    TASK_REMIND = REMIND_TASK
 
 
 class PlanStep(BaseModel):
