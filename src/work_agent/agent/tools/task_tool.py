@@ -31,6 +31,7 @@ class TaskTool(BaseTool):
                     "department_tasks",
                     "employee_tasks",
                     "create",
+                    "summary",
                 ],
             },
             "query": {
@@ -51,6 +52,7 @@ class TaskTool(BaseTool):
         "department_tasks": "task:view",
         "employee_tasks": "task:view",
         "create": "task:create",
+        "summary": "task:view",
     }
 
 
@@ -382,6 +384,29 @@ class TaskTool(BaseTool):
                     None,
                 ),
             )
+
+        # 部门任务汇总（summary_task，部门经理/系统）
+        if action == "summary":
+
+            from work_agent.core.container import task_report_service
+
+            report = task_report_service.build_weekly_report(
+                tenant_id=(
+                    context.tenant_id
+                    if context.tenant_id
+                    else None
+                ),
+                department=context.department or "",
+            )
+
+            return {
+                "action": "summary",
+                "department": context.department or "",
+                "summary": report.get("summary", {}),
+                "completed_tasks": report.get("completed_tasks", [])[:10],
+                "overdue_tasks": report.get("overdue_tasks", [])[:10],
+                "risky_tasks": report.get("risky_tasks", [])[:10],
+            }
 
         # 确认 / 取消：优先消解任务创建草稿，其次进度确认
         if action == "confirm":
