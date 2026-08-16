@@ -300,8 +300,47 @@ def test_c_task_shared_context():
     print("✓ PartC 任务链路共享上下文（业务决策隔离）")
 
 
+def test_d_isolation_and_fault_tolerance():
+    """Part D：跨用户隔离 + 异常容错"""
+    from work_agent.agent.query_rewriter import QueryRewriter
+
+    # 用户 A 有历史，用户 B 无（隔离；A 用独立会话避免前序污染）
+    conv_a = _get_conv("1", TEST_USER_A)
+    conv_b = _get_conv("1", TEST_USER_B)
+
+    conversation_memory_service.append_round(
+        conv_a,
+        "差旅报销标准是什么",
+        "员工每晚400元",
+    )
+
+    # B 的历史为空（A 的追问不污染 B）
+    hist_b = conversation_memory_service.get_recent(conv_b)
+    assert hist_b == [], f"B 不应有 A 的历史: {hist_b}"
+
+    # B 的 rewrite 原样返回（无历史 → 不 rewrite）
+    r = QueryRewriter(llm=None).rewrite_query("那经理呢？", hist_b)
+    assert r == "那经理呢？", r
+
+    # A 有历史（含本轮差旅 + 前序），且 A 的追问 rewrite 含差旅
+    hist_a = conversation_memory_service.get_recent(conv_a)
+    assert len(hist_a) >= 2, hist_a
+    last_user = next(
+        (str(m.content) for m in reversed(hist_a) if m.type == "human"),
+        "",
+    )
+    assert "差旅" in last_user, last_user
+
+    # 异常容错：无效会话 id 不炸
+    assert conversation_memory_service.get_recent(-1) == []
+    assert conversation_memory_service.get_recent("not-a-number") == []
+    conversation_memory_service.append_round(None, "x", "y")  # 静默 no-op
+
+    print("✓ PartD 跨用户隔离 + 异常容错")
+
+
 def test():
-    print("== RAG 会话记忆测试（Phase 1-3）==")
+    print("== RAG 会话记忆测试（Phase 1-4）==")
     _cleanup()
     try:
         test_a_storage_and_window()
@@ -309,9 +348,10 @@ def test():
         test_b_query_rewrite()
         test_b2_rewrite_retrieval()
         test_c_task_shared_context()
+        test_d_isolation_and_fault_tolerance()
     finally:
         _cleanup()
-    print("RAG 会话记忆测试（Phase 1-3）通过")
+    print("RAG 会话记忆测试（Phase 1-4）通过")
 
 
 if __name__ == "__main__":

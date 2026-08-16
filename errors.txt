@@ -636,3 +636,22 @@ Phase：Enterprise Agent 升级（4 Phase）
 4. 契约测试会随 RBAC 权限码新增而失败，需同步更新 test_rbac 断言
 验证：test_enterprise_agent 12 项 + test_task_reminder_extended 5 项 + 全量回归 + 生产套件 6/6+契约 全绿
 ====================
+====================
+时间：2026-08-16
+Phase：轻量 State + RAG 会话记忆（6-3.txt 调整版）
+文件：services/conversation_memory_service.py + agent/query_rewriter.py + agent/runtime.py + db/models/conversation_message.py + task.py
+问题：conversations 表只有 message_count 零历史，RAG 单轮，"那经理呢？"追问无法工作；任务创建草稿唯一约束 (creator_id,status) 不允许同一创建者多条 cancelled 历史
+方案（用户决策）：不做 LangGraph 重构；conversation_messages 表保存完整历史（不删，context window 由读取限制）；chat_history 用 LangChain BaseMessage 仅运行态（DB 存原始字段，adapter 转换）；BaseMessage 不参与业务决策（执行人/日期确定性）
+修复：
+- conversation_messages 表（role user/assistant/tool/system + scope chat/task/tool/system + tool_name + extra JSON，SQLAlchemy 保留 metadata 故列名用 extra）
+- conversation_memory_service：append/append_round/get_recent（adapter 转 BaseMessage）
+- agent/query_rewriter：_is_follow_up 指代词优先（"那/这个/它/呢/？"开头或短尾，不依赖字数），LLM 改写 + 确定性 _rule_rewrite 兜底
+- runtime context_builder 统一加载 chat_history + Agent 统一出口写历史（只记最终用户可见消息）
+- KnowledgeAgent 检索前 rewrite；preview_create_task 读 chat_history 辅助理解
+- task_pending_creates 唯一约束改 Postgres partial unique index（WHERE status='active'），允许多条 cancelled/confirmed 历史
+经验：
+1. SQLAlchemy Declarative 保留 metadata 属性，模型列名不能用 metadata（用 extra）
+2. create_all 的 checkfirst 只查表不查索引，表存在时重建索引会 DuplicateTable——迁移需手动 IF NOT EXISTS 建索引
+3. (creator_id, status) 复合唯一约束不允许同一创建者多条同类历史，需 partial index
+验证：test_rag_memory Part A-D + 回归全绿 + 生产套件 6/6+契约
+====================
