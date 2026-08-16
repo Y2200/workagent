@@ -282,8 +282,185 @@ def test_d_department_tasks():
             db2.close()
 
 
+# ======================
+# Phase 3：任务创建 Agent（带确认）
+# ======================
+
+
+def _cleanup_pending_creates():
+    from work_agent.db.models.task import TaskPendingCreate
+    from work_agent.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        db.query(TaskPendingCreate).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_e_task_create_flow():
+    """Part E：任务创建确认流（preview → confirm → created / cancel）"""
+    from work_agent.core.container import task_service
+    from work_agent.agent.tools.task_tool import TaskTool
+    from work_agent.db.session import SessionLocal
+
+    tool = TaskTool()
+
+    # 用 dept_admin_A 作为创建者（DEPARTMENT_ADMIN，租户1，有 task:create）
+    creator = _db_user("dept_admin_A")
+    assert creator, "缺少 dept_admin_A"
+
+    # 执行人：A研发员工（租户1 研发部）
+    target = _db_user("A研发员工")
+    assert target, "缺少 A研发员工"
+
+    ctx_admin = _ctx(
+        permissions={"task:view", "task:create"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    # 绑定创建者真实 id（AgentContext 里 user_id）
+    ctx_admin.user_id = creator.id
+
+    try:
+        # 1. 发起创建 → awaiting_confirmation
+        r = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content=f"给{target.real_name}安排客户系统测试任务，下周五完成",
+        )
+        assert r["status"] == "awaiting_confirmation", r
+        draft = r["draft"]
+        assert draft["title"], "应解析出任务名"
+        assert draft["employee_id"] == target.id, "执行人应为 A研发员工"
+        assert draft["deadline"] is not None, "下周五应解析出截止时间"
+        print(f"  create preview: title={draft['title']} emp={draft['employee_name']} dl={draft['deadline']}")
+
+        # 2. 缺字段 → need_info（无执行人）
+        r2 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content="我想发布一个新任务",
+        )
+        assert r2["status"] == "need_info", r2
+        assert "employee_name" in r2["missing"], r2
+
+        # 3. 再次发起创建，覆盖在途草稿（upsert）
+        r3 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content=f"给{target.real_name}安排接口开发任务，3天后完成",
+        )
+        assert r3["status"] == "awaiting_confirmation", r3
+        assert "接口开发" in r3["draft"]["title"], r3
+
+        # 4. 确认 → task_created（内部 create_task 落库）
+        r4 = tool.execute(context=ctx_admin, action="confirm", content="确认")
+        assert r4["status"] == "task_created", r4
+        created_task_id = r4["task"]["id"]
+
+        # 验证落库：执行人租户
+        db = SessionLocal()
+        try:
+            from work_agent.db.models.task import Task
+            task = db.query(Task).filter(Task.id == created_task_id).first()
+            assert task is not None
+            assert task.employee_id == target.id
+            assert task.tenant_id == "1"  # 执行人租户
+        finally:
+            db.close()
+
+        # 5. 无在途草稿时 confirm → 回退进度确认（no_pending）
+        r5 = tool.execute(context=ctx_admin, action="confirm", content="确认")
+        assert r5["status"] in ("no_pending", "no_tasks"), r5
+
+        # 6. 取消流程
+        tool.execute(
+            context=ctx_admin,
+            action="create",
+            content=f"给{target.real_name}安排临时任务",
+        )
+        r6 = tool.execute(context=ctx_admin, action="cancel", content="取消")
+        assert r6["status"] == "cancelled_create", r6
+
+        # 7. 无 task:create 权限 → denied
+        ctx_user_no_create = _ctx(
+            permissions={"task:view"},
+            role_codes={"USER"},
+            tenant_id="1",
+        )
+        ctx_user_no_create.user_id = target.id
+        r7 = tool.execute(
+            context=ctx_user_no_create,
+            action="create",
+            content="给员工A安排任务",
+        )
+        assert r7["error"] == "permission_denied", r7
+
+        print("✓ PartE 任务创建确认流（preview/need_info/confirm created/cancel/权限拒绝）")
+
+        # 清理已创建任务
+        db = SessionLocal()
+        try:
+            from work_agent.db.models.task import Task
+            obj = db.query(Task).filter(Task.id == created_task_id).first()
+            if obj:
+                db.delete(obj)
+                db.commit()
+        finally:
+            db.close()
+
+    finally:
+        _cleanup_pending_creates()
+
+
+def test_f_intent_planning():
+    """Part F：task_create 意图路由 + plan"""
+    from work_agent.agent.router.intent_router import IntentRouter
+    from work_agent.agent.planner import agent_planner
+
+    ctx = _ctx(
+        permissions={"task:view", "task:create"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+
+    router = IntentRouter()
+
+    # 规则回退路径（不依赖 LLM，确定性）：安排 + 任务 → task_create
+    intent = router._fallback("给张三安排客户系统测试任务")
+    assert intent.intent == "task_create", intent.intent
+
+    plan = agent_planner.plan(
+        message="给张三安排客户系统测试任务，下周五完成",
+        intent_result=intent,
+        context=ctx,
+    )
+    assert plan.kind == "task", plan.kind
+    assert plan.steps[0].tool == "task_tool", plan.steps
+    assert plan.steps[0].action == "create", plan.steps
+    print("✓ PartF task_create 意图路由 + plan")
+
+
+def test_e2_deadline_parse():
+    """Part E2：_parse_deadline_text 确定性解析"""
+    from work_agent.core.container import task_service
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+
+    assert task_service._parse_deadline_text("明天") is not None
+    assert task_service._parse_deadline_text("3天后") is not None
+    assert task_service._parse_deadline_text("下周五") is not None
+    assert task_service._parse_deadline_text("尽快") is not None
+    assert task_service._parse_deadline_text("2026-12-31") is not None
+    assert task_service._parse_deadline_text("") is None
+    assert task_service._parse_deadline_text("随便写") is None
+    print("✓ PartE2 _parse_deadline_text")
+
+
 def test():
-    print("== Enterprise Agent 测试（Phase 1 + Phase 2）==")
+    print("== Enterprise Agent 测试（Phase 1-3）==")
     test_a_base_tool_permission_hook()
     test_a2_context_role_codes()
     test_a3_registry_permission_info()
@@ -291,6 +468,9 @@ def test():
     test_b_user_tool()
     test_b2_department_scope()
     test_d_department_tasks()
+    test_e_task_create_flow()
+    test_e2_deadline_parse()
+    test_f_intent_planning()
     print("Enterprise Agent 测试全部通过")
 
 

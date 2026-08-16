@@ -149,4 +149,14 @@ PROMPT_METADATA = {
             "task_list",
         ],
     },
+    # ======================
+    # Enterprise Agent：任务发布解析（Phase 3）
+    # ======================
+    "task_create_parse": {
+        "version": "1.0",
+        "description": "解析管理员任务发布消息（执行人/标题/截止，日期与执行人由系统确定性处理）",
+        "variables": [
+            "message",
+        ],
+    },
 }

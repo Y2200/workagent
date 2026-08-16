@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from work_agent.db.models.task import (
     Task,
+    TaskPendingCreate,
     TaskPendingUpdate,
     TaskUpdate,
 )
@@ -468,3 +469,112 @@ class TaskRepository:
             db.delete(pending)
 
             db.commit()
+
+    # ======================
+    # 待确认任务创建草稿（Enterprise Agent Phase 3）
+    # ======================
+
+    def upsert_pending_create(
+            self,
+            db: Session,
+            *,
+            creator_id: int,
+            creator_tenant_id: str,
+            employee_id: int | None,
+            title: str,
+            description: str = "",
+            department: str = "",
+            deadline=None,
+            priority: str = "normal",
+            raw_message: str = "",
+            parsed: dict | None = None
+    ) -> "TaskPendingCreate":
+
+        """
+        新建或覆盖创建者在途草稿（status=active 唯一）
+
+        唯一约束 creator_id + status=active；已有在途草稿则覆盖字段。
+        """
+
+        pending = self.get_active_pending_create(
+            db,
+            creator_id,
+        )
+
+        if pending:
+
+            pending.creator_tenant_id = creator_tenant_id
+            pending.employee_id = employee_id
+            pending.title = title
+            pending.description = description
+            pending.department = department
+            pending.deadline = deadline
+            pending.priority = priority
+            pending.raw_message = raw_message
+            pending.parsed = parsed or {}
+
+            db.commit()
+
+            db.refresh(pending)
+
+            return pending
+
+        pending = TaskPendingCreate(
+            creator_id=creator_id,
+            creator_tenant_id=creator_tenant_id,
+            employee_id=employee_id,
+            title=title,
+            description=description,
+            department=department,
+            deadline=deadline,
+            priority=priority,
+            raw_message=raw_message,
+            parsed=parsed or {},
+            status="active",
+        )
+
+        db.add(pending)
+
+        db.commit()
+
+        db.refresh(pending)
+
+        return pending
+
+    def get_active_pending_create(
+            self,
+            db: Session,
+            creator_id: int
+    ) -> "TaskPendingCreate | None":
+
+        return (
+            db.query(TaskPendingCreate)
+            .filter(
+                TaskPendingCreate.creator_id == creator_id,
+                TaskPendingCreate.status == "active",
+            )
+            .order_by(TaskPendingCreate.id.desc())
+            .first()
+        )
+
+    def mark_pending_create(
+            self,
+            db: Session,
+            pending,
+            status: str
+    ) -> "TaskPendingCreate | None":
+
+        """
+        归档草稿（confirmed / cancelled）
+        """
+
+        if not pending:
+            return None
+
+        pending.status = status
+
+        db.commit()
+
+        db.refresh(pending)
+
+        return pending

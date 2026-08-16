@@ -231,6 +231,114 @@ class TaskUpdate(Base):
     )
 
 
+class TaskPendingCreate(Base):
+
+    """
+    待确认任务创建草稿（管理员发布任务，AI 解析后、确认前）
+
+    管理员在企微说「给张三安排XX任务」→ LLM 解析（执行人/标题/截止，
+    用户/日期确定性优先）→ 存此表 → 展示拟创建信息 → 回「确认」→ 才 create_task。
+
+    企微回调无状态，必须持久化；多轮确认靠本表。
+    """
+
+    __tablename__ = "task_pending_creates"
+
+    __table_args__ = (
+        # 同一创建者仅一条在途草稿（status=active）；确认/取消后归档历史
+        UniqueConstraint(
+            "creator_id",
+            "status",
+            name="uq_task_pending_create_creator_status",
+        ),
+        Index(
+            "ix_task_pending_create_creator",
+            "creator_id",
+            "status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True
+    )
+
+    # 创建者（发布任务的管理员）
+    creator_id: Mapped[int] = mapped_column(
+        BigInteger,
+        index=True
+    )
+
+    creator_tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=""
+    )
+
+    # 已解析执行人（DB 确定性查询得到）
+    employee_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(255),
+        default=""
+    )
+
+    description: Mapped[str] = mapped_column(
+        Text,
+        default=""
+    )
+
+    # 执行人部门（从执行人用户冗余，创建任务时写入 tasks.department）
+    department: Mapped[str] = mapped_column(
+        String(64),
+        default=""
+    )
+
+    deadline: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+
+    # low / normal / high
+    priority: Mapped[str] = mapped_column(
+        String(16),
+        default="normal"
+    )
+
+    # 创建者原始消息（追溯）
+    raw_message: Mapped[str] = mapped_column(
+        Text,
+        default=""
+    )
+
+    # 解析中间结果 / 待补信息
+    parsed: Mapped[dict] = mapped_column(
+        JSON,
+        default=dict
+    )
+
+    # active / confirmed / cancelled
+    status: Mapped[str] = mapped_column(
+        String(16),
+        default="active"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True
+    )
+
+
 class TaskPendingUpdate(Base):
 
     """

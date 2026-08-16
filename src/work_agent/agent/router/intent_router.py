@@ -1,4 +1,5 @@
 import json
+import re
 
 from work_agent.agent.llm import get_llm
 from work_agent.agent.schemas import IntentResult, IntentType
@@ -25,6 +26,7 @@ class IntentRouter:
         IntentType.WORKFLOW_REQUEST: ("", False),
         IntentType.RISK_ANALYSIS: ("", False),
         IntentType.TASK_MANAGEMENT: ("task_tool", True),
+        IntentType.TASK_CREATE: ("task_tool", True),
         IntentType.SMALL_TALK: ("", False),
         IntentType.UNKNOWN: ("", False),
     }
@@ -339,6 +341,24 @@ class IntentRouter:
         """
 
         msg = message.strip()
+
+        # 任务发布：安排/给XX + 任务
+        if (
+            ("安排" in msg or "发布" in msg or "分派" in msg or "指派" in msg)
+            and "任务" in msg
+        ) or (
+            re.match(r"^(给|让)", msg)
+            and "任务" in msg
+        ):
+
+            return IntentResult(
+                intent=IntentType.TASK_CREATE,
+                confidence=0.6,
+                need_tool=True,
+                tool="task_tool",
+                entities={"action": "create"},
+                reasoning="规则回退：命中任务发布关键词",
+            )
 
         task_keywords = [
             "我的任务",

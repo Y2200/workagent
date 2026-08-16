@@ -230,6 +230,23 @@ class AgentPlanner:
                 reasoning=f"任务督导：执行 {action}",
             )
 
+        # 任务发布（管理员，带确认）：解析 → 待确认草稿
+        if intent == IntentType.TASK_CREATE:
+
+            return PlanResult(
+                kind="task",
+                intent=intent,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="task_tool",
+                        action="create",
+                        description="任务发布（解析 → 确认 → 创建）",
+                    ),
+                ],
+                reasoning="任务发布：解析并生成待确认草稿",
+            )
+
         # 闲聊/问候：直接友好回复，不进 legacy 督导流
         if (
             intent == IntentType.SMALL_TALK

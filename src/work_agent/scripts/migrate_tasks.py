@@ -16,6 +16,7 @@ from work_agent.db.base import Base
 from work_agent.db.models.task import (
     Task,
     TaskNotification,
+    TaskPendingCreate,
     TaskPendingUpdate,
     TaskUpdate,
 )
@@ -31,6 +32,7 @@ def migrate():
             Task.__table__,
             TaskUpdate.__table__,
             TaskPendingUpdate.__table__,
+            TaskPendingCreate.__table__,
             TaskNotification.__table__,
         ],
     )

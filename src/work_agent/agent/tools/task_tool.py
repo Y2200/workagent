@@ -29,6 +29,7 @@ class TaskTool(BaseTool):
                     "cancel",
                     "complete",
                     "department_tasks",
+                    "create",
                 ],
             },
             "query": {
@@ -47,6 +48,7 @@ class TaskTool(BaseTool):
         "confirm": "task:view",
         "cancel": "task:view",
         "department_tasks": "task:view",
+        "create": "task:create",
     }
 
 
@@ -249,8 +251,25 @@ class TaskTool(BaseTool):
                 content=content or query,
             )
 
-        # 确认 / 取消
+        # 任务发布：解析 → 待确认草稿（不落正式表）
+        if action == "create":
+
+            return task_service.preview_create_task(
+                creator_id=context.user_id,
+                creator_tenant_id=context.tenant_id,
+                content=content or query,
+            )
+
+        # 确认 / 取消：优先消解任务创建草稿，其次进度确认
         if action == "confirm":
+
+            created = task_service.confirm_pending_create(
+                creator_id=context.user_id,
+            )
+
+            if created:
+
+                return created
 
             return task_service.confirm_pending(
                 tenant_id=context.tenant_id,
@@ -258,6 +277,14 @@ class TaskTool(BaseTool):
             )
 
         if action == "cancel":
+
+            cancelled = task_service.cancel_pending_create(
+                creator_id=context.user_id,
+            )
+
+            if cancelled:
+
+                return cancelled
 
             return task_service.cancel_pending(
                 tenant_id=context.tenant_id,
