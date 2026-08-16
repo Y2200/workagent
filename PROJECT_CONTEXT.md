@@ -6,7 +6,18 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-16，Enterprise Agent 工具编排层完成 4 Phase）
+# ⚡ 当前状态（2026-08-16，轻量 State + RAG 会话记忆完成 4 Phase）
+
+**代码状态**：本地 `master` = `b41f407` + Phase 4（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+## 最新（2026-08-16）：轻量统一 State + RAG 会话记忆（6-3.txt 调整版）
+- **目标**：补上 Agent 连续上下文（conversations 表原只有 message_count 零历史；"那经理呢？"追问无法工作）
+- **不做 LangGraph 重构**：保持现有 runtime 主链路，不引入 langgraph-checkpoint-postgres，不改主流程
+- **Phase 1 会话存储**：conversation_messages 表（role user/assistant/tool/system + scope + tool_name + extra）+ conversation_memory_service（adapter 转 BaseMessage）+ runtime 统一加载/写历史
+- **Phase 2 RAG rewrite**：agent/query_rewriter（_is_follow_up 指代词优先）+ conversation_rewrite prompt + KnowledgeAgent 接入，"那经理呢？"能改写检索
+- **Phase 3 统一上下文**：AgentContext.chat_history 共享；preview_create_task 读历史辅助理解，业务决策隔离（执行人/日期确定性）
+- **Phase 4 生产优化**：context window（不删历史）+ 异常容错 + 跨用户隔离 + scope 字段；task_pending_creates 改 partial unique index（允许多条历史）
+- **测试**：test_rag_memory（Part A-D）
 
 **代码状态**：本地 `master` = `70bc1f1`（Enterprise Agent Phase 1-4）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
@@ -455,6 +466,8 @@ python -m work_agent.scripts.test_document_consistency   # 文档 PG/Milvus 一�
 python -m work_agent.scripts.test_tenant_global_docs     # 租户语义：空租户文档全局可见（企微查不到 Web 文档修复）
 python -m work_agent.scripts.test_enterprise_agent       # Enterprise Agent（工具权限/用户/通知/部门/任务创建确认/意图）
 python -m work_agent.scripts.test_task_reminder_extended # 督办增强（staleness/部门 digest/周报部门投递）
+python -m work_agent.scripts.test_rag_memory            # RAG 会话记忆（历史/rewrite/统一上下文/隔离容错）
+python -m work_agent.scripts.migrate_conversation_messages # 会话消息表迁移（幂等）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000

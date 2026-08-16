@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -245,11 +246,14 @@ class TaskPendingCreate(Base):
     __tablename__ = "task_pending_creates"
 
     __table_args__ = (
-        # 同一创建者仅一条在途草稿（status=active）；确认/取消后归档历史
-        UniqueConstraint(
+        # 同一创建者仅一条在途草稿（status=active）；确认/取消后归档历史，
+        # 允许同一创建者多条历史（cancelled/confirmed）
+        # 用 Postgres partial unique index：仅约束 active 唯一
+        Index(
+            "uq_task_pending_create_creator_active",
             "creator_id",
-            "status",
-            name="uq_task_pending_create_creator_status",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
         ),
         Index(
             "ix_task_pending_create_creator",

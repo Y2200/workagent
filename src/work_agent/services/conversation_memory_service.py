@@ -54,13 +54,21 @@ class ConversationMemoryService:
         if not conversation_id:
             return
 
+        try:
+
+            cid = int(conversation_id)
+
+        except (TypeError, ValueError):
+
+            return
+
         db = SessionLocal()
 
         try:
 
             self.repository.append_message(
                 db,
-                conversation_id=int(conversation_id),
+                conversation_id=cid,
                 role=role,
                 content=content,
                 scope=scope,
@@ -95,6 +103,14 @@ class ConversationMemoryService:
         if not user_message and not assistant_message:
             return
 
+        try:
+
+            cid = int(conversation_id)
+
+        except (TypeError, ValueError):
+
+            return
+
         db = SessionLocal()
 
         try:
@@ -102,7 +118,7 @@ class ConversationMemoryService:
             if user_message:
                 self.repository.append_message(
                     db,
-                    conversation_id=int(conversation_id),
+                    conversation_id=cid,
                     role="user",
                     scope="chat",
                     content=user_message,
@@ -113,7 +129,7 @@ class ConversationMemoryService:
             if assistant_message:
                 self.repository.append_message(
                     db,
-                    conversation_id=int(conversation_id),
+                    conversation_id=cid,
                     role="assistant",
                     scope="chat",
                     content=assistant_message,
@@ -136,10 +152,18 @@ class ConversationMemoryService:
         """
         读取最近 N 轮作为 context window，返回 list[BaseMessage]（运行态）
 
-        **只限窗口，不删除历史**。无会话 id 返回 []（防御）。
+        **只限窗口，不删除历史**。无/无效会话 id 返回 []（防御，不抛异常）。
         """
 
         if not conversation_id:
+            return []
+
+        try:
+
+            cid = int(conversation_id)
+
+        except (TypeError, ValueError):
+
             return []
 
         db = SessionLocal()
@@ -148,7 +172,7 @@ class ConversationMemoryService:
 
             rows = self.repository.get_recent_messages(
                 db,
-                conversation_id=int(conversation_id),
+                conversation_id=cid,
                 limit=rounds * MESSAGES_PER_ROUND,
                 scope=scope,
             )
