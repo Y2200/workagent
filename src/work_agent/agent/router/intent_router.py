@@ -329,6 +329,14 @@ class IntentRouter:
 
             return {"action": "department_tasks"}
 
+        # 查看指定员工任务（非"我的任务"）
+        if (
+            re.search(r"(?:查看|查|看).+的\s*任务", msg)
+            and "我的任务" not in msg
+        ):
+
+            return {"action": "employee_tasks"}
+
         return {"action": "list"}
 
 
@@ -359,6 +367,21 @@ class IntentRouter:
                 tool="task_tool",
                 entities={"action": "create"},
                 reasoning="规则回退：命中任务发布关键词",
+            )
+
+        # 查看指定员工任务（「查看张三的任务」，非"我的任务"）
+        if (
+            re.search(r"(?:查看|查|看).+的\s*任务", msg)
+            and "我的任务" not in msg
+        ):
+
+            return IntentResult(
+                intent=IntentType.TASK_MANAGEMENT,
+                confidence=0.6,
+                need_tool=True,
+                tool="task_tool",
+                entities={"action": "employee_tasks"},
+                reasoning="规则回退：查看指定员工任务",
             )
 
         # 主动提醒/督促

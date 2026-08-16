@@ -29,6 +29,7 @@ class TaskTool(BaseTool):
                     "cancel",
                     "complete",
                     "department_tasks",
+                    "employee_tasks",
                     "create",
                 ],
             },
@@ -48,6 +49,7 @@ class TaskTool(BaseTool):
         "confirm": "task:view",
         "cancel": "task:view",
         "department_tasks": "task:view",
+        "employee_tasks": "task:view",
         "create": "task:create",
     }
 
@@ -138,6 +140,23 @@ class TaskTool(BaseTool):
 
             from work_agent.agent.tools.permissions import check_department_scope
 
+            # 角色校验：普通员工（USER）无部门维度，拒绝查看部门任务
+            role_codes = getattr(
+                context,
+                "role_codes",
+                set(),
+            )
+
+            if not (
+                role_codes
+                & {"SUPER_ADMIN", "TENANT_ADMIN", "DEPARTMENT_ADMIN"}
+            ):
+
+                return {
+                    "error": "permission_denied",
+                    "message": "权限不足，仅部门管理员可查看部门任务",
+                }
+
             # 部门作用域：DEPARTMENT_ADMIN 强制本部门；管理员可指定
             target_department = (
                 kwargs.get("department")
@@ -181,6 +200,105 @@ class TaskTool(BaseTool):
                             t.employee_id,
                             str(t.employee_id),
                         ),
+                        "deadline": (
+                            t.deadline.isoformat()
+                            if t.deadline
+                            else None
+                        ),
+                    }
+                    for t in tasks
+                ],
+            }
+
+        # 按员工查任务（部门经理查指定员工，仅本部门）
+        if action == "employee_tasks":
+
+            from work_agent.agent.tools.permissions import check_department_scope
+
+            # 角色校验：仅管理角色可查指定员工任务
+            role_codes = getattr(
+                context,
+                "role_codes",
+                set(),
+            )
+
+            if not (
+                role_codes
+                & {"SUPER_ADMIN", "TENANT_ADMIN", "DEPARTMENT_ADMIN"}
+            ):
+
+                return {
+                    "error": "permission_denied",
+                    "message": "权限不足，仅部门管理员可查看员工任务",
+                }
+
+            # 解析目标员工：优先 kwargs.employee_id，否则按姓名解析
+            employee_id = kwargs.get("employee_id")
+
+            if not employee_id:
+
+                employee = self._resolve_employee(
+                    context,
+                    kwargs.get("employee_name")
+                    or query,
+                )
+
+                if not employee:
+
+                    return {
+                        "status": "error",
+                        "message": "未找到员工，请确认姓名",
+                    }
+
+                employee_id = employee.id
+
+            # 部门作用域：DEPARTMENT_ADMIN 仅能查本部门员工
+            from work_agent.core.container import user_service
+
+            target = user_service.get_by_id(
+                employee_id,
+            )
+
+            if not target:
+
+                return {
+                    "status": "error",
+                    "message": "未找到员工",
+                }
+
+            if not check_department_scope(
+                    context,
+                    target.department or "",
+            ):
+
+                return {
+                    "error": "permission_denied",
+                    "message": "只能查看本部门员工的任务",
+                }
+
+            tasks = task_service.list_employee_tasks(
+                tenant_id=(
+                    context.tenant_id
+                    if context.tenant_id
+                    else None
+                ),
+                employee_id=employee_id,
+            )
+
+            return {
+                "action": "employee_tasks",
+                "employee": (
+                    target.real_name
+                    or target.username
+                    or str(employee_id)
+                ),
+                "tasks": [
+                    {
+                        "id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                        "progress": t.progress,
+                        "priority": t.priority,
                         "deadline": (
                             t.deadline.isoformat()
                             if t.deadline
@@ -295,6 +413,56 @@ class TaskTool(BaseTool):
             "status": "error",
             "message": f"不支持的操作: {action}",
         }
+
+
+    @staticmethod
+    def _resolve_employee(
+            context: AgentContext,
+            name: str
+    ):
+
+        """
+        按姓名解析员工（employee_tasks 用），经 user_service
+
+        从消息中提取目标员工名（如「查看张三的任务」→ 张三）
+        """
+
+        import re
+
+        if not name:
+            return None
+
+        # 从消息提取姓名：「查看/查/看 + 姓名 + 的任务」
+        # 姓名支持中文/字母/数字/下划线（如 dept_admin_A）
+        match = re.search(
+            r"(?:查看|查|看|关注|了解)\s*"
+            r"([一-龥A-Za-z0-9_]{2,20}?)"
+            r"(?=的\s*任务|的任务|的进度|情况)",
+            name,
+        )
+
+        keyword = (
+            match.group(1)
+            if match
+            else name.strip()
+        )
+
+        from work_agent.core.container import user_service
+
+        users = user_service.search_by_name(
+            keyword=keyword,
+            tenant_id=(
+                context.tenant_id
+                if context.tenant_id
+                else ""
+            ),
+        )
+
+        if not users:
+            return None
+
+        # 若多个候选，取第一个（用户可补充更完整姓名）
+        return users[0]
 
 
     @staticmethod
