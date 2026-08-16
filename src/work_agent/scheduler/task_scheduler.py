@@ -66,7 +66,8 @@ def _parse_time(
 def _daily_reminder_job() -> None:
 
     """
-    定时任务：扫描 + 企微提醒（内部吞异常，只记录日志，不中断调度）
+    定时任务：System Agent 主动扫描 + 提醒（Phase 11）
+    经 System Agent（is_system + Policy system 权限）执行
     """
 
     try:
@@ -76,14 +77,17 @@ def _daily_reminder_job() -> None:
             or ""
         )
 
-        summary = task_reminder_service.scan_and_remind(
-            min_risk=settings.task_reminder_min_risk,
+        # Phase 11：System Proactive Agent（system 身份 + Policy 校验）
+        from work_agent.agent.system_agent import system_proactive_agent
+
+        result = system_proactive_agent.run_daily_scan(
             department=department,
+            min_risk=settings.task_reminder_min_risk,
         )
 
         logger.info(
-            "任务督办提醒完成：%s",
-            summary,
+            "System Agent 任务督办完成：%s",
+            result,
         )
 
         # Enterprise Agent：部门管理员 digest（默认关闭）
@@ -196,13 +200,15 @@ def _weekly_report_job() -> None:
                 outcome["status"],
             )
 
-        # Enterprise Agent：周报部门经理 digest（默认关闭）
+        # Enterprise Agent：周报部门经理 digest（默认关闭；Phase 11 经 System Agent）
         if settings.weekly_report_manager_digest:
 
-            digests = task_report_service.send_department_digests()
+            from work_agent.agent.system_agent import system_proactive_agent
+
+            digests = system_proactive_agent.run_weekly_report()
 
             logger.info(
-                "周报部门经理 digest 完成：%s",
+                "System Agent 周报部门 digest 完成：%s",
                 digests,
             )
 
