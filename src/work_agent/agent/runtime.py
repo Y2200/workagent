@@ -108,6 +108,11 @@ class AgentRuntime:
                     user.id
                 )
 
+                role_codes = RBACService().get_role_codes(
+                    db,
+                    user.id
+                )
+
             finally:
 
                 db.close()
@@ -123,6 +128,7 @@ class AgentRuntime:
                 user=user,
                 channel=channel,
                 permissions=permissions,
+                role_codes=role_codes,
                 conversation_id=str(conversation_id),
                 model_name=settings.model_name,
                 agent_version=settings.agent_version,

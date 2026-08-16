@@ -20,7 +20,15 @@ class TaskTool(BaseTool):
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["list", "submit", "confirm", "cancel", "complete"],
+                "enum": [
+                    "list",
+                    "detail",
+                    "submit",
+                    "submit_all",
+                    "confirm",
+                    "cancel",
+                    "complete",
+                ],
             },
             "query": {
                 "type": "string",
