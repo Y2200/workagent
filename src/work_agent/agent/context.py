@@ -1,6 +1,12 @@
 from dataclasses import dataclass, field
 
+from typing import TYPE_CHECKING
+
 from uuid import uuid4
+
+if TYPE_CHECKING:
+
+    from langchain_core.messages import BaseMessage
 
 
 @dataclass
@@ -35,6 +41,13 @@ class AgentContext:
     )
 
     conversation_id: str = ""
+
+    # 会话记忆（P2）：最近 N 轮 LangChain BaseMessage（运行态）
+    # 由 runtime context_builder 统一加载，所有 Agent 分支共享
+    # 只辅助 LLM 理解上下文，不参与 employee_id/deadline/RBAC 等业务决策
+    chat_history: list = field(
+        default_factory=list
+    )
 
     channel: str = "wechat"
 

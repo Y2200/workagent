@@ -24,6 +24,7 @@ from work_agent.db.models.trace import (
 )
 from work_agent.db.models.agent_config import AgentConfig
 from work_agent.db.models.prompt_version import PromptVersion
+from work_agent.db.models.conversation_message import ConversationMessage
 from work_agent.db.models.llm_cost import LLMCostRecord
 from work_agent.db.models.task import (
     Task,
@@ -47,6 +48,7 @@ __all__ = [
     "RolePermission",
     "UserRole",
     "Conversation",
+    "ConversationMessage",
     "KnowledgeEntity",
     "KnowledgeRelation",
     "AgentTrace",
