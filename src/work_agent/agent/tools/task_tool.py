@@ -28,6 +28,7 @@ class TaskTool(BaseTool):
                     "confirm",
                     "cancel",
                     "complete",
+                    "department_tasks",
                 ],
             },
             "query": {
@@ -45,6 +46,7 @@ class TaskTool(BaseTool):
         "complete": "task:view",
         "confirm": "task:view",
         "cancel": "task:view",
+        "department_tasks": "task:view",
     }
 
 
@@ -80,6 +82,7 @@ class TaskTool(BaseTool):
                 context=context,
                 query=query,
                 content=content,
+                **kwargs,
             )
 
         except TenantAccessDenied:
@@ -97,7 +100,8 @@ class TaskTool(BaseTool):
             *,
             context: AgentContext,
             query: str,
-            content: str
+            content: str,
+            **kwargs
     ) -> dict:
 
         # 查看任务
@@ -117,6 +121,64 @@ class TaskTool(BaseTool):
                         "status": t.status,
                         "progress": t.progress,
                         "priority": t.priority,
+                        "deadline": (
+                            t.deadline.isoformat()
+                            if t.deadline
+                            else None
+                        ),
+                    }
+                    for t in tasks
+                ],
+            }
+
+        # 按部门查任务清单（部门管理员/管理员）
+        if action == "department_tasks":
+
+            from work_agent.agent.tools.permissions import check_department_scope
+
+            # 部门作用域：DEPARTMENT_ADMIN 强制本部门；管理员可指定
+            target_department = (
+                kwargs.get("department")
+                or context.department
+                or ""
+            )
+
+            if not check_department_scope(
+                    context,
+                    target_department,
+            ):
+
+                return {
+                    "error": "permission_denied",
+                    "message": "只能查看本部门任务",
+                }
+
+            tasks = task_service.list_tasks_by_department(
+                tenant_id=(
+                    context.tenant_id
+                    if context.tenant_id
+                    else None
+                ),
+                department=target_department,
+            )
+
+            # 富化执行人姓名（复用 user 查询，避免 Agent 直连 DB）
+            employee_names = self._employee_names(tasks)
+
+            return {
+                "action": "department_tasks",
+                "department": target_department,
+                "tasks": [
+                    {
+                        "id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                        "progress": t.progress,
+                        "priority": t.priority,
+                        "employee": employee_names.get(
+                            t.employee_id,
+                            str(t.employee_id),
+                        ),
                         "deadline": (
                             t.deadline.isoformat()
                             if t.deadline
@@ -206,3 +268,41 @@ class TaskTool(BaseTool):
             "status": "error",
             "message": f"不支持的操作: {action}",
         }
+
+
+    @staticmethod
+    def _employee_names(tasks) -> dict[int, str]:
+
+        """
+        批量解析任务执行人姓名（部门任务清单富化）
+
+        经 UserRepository，避免 Agent 直连 DB（分层铁律）
+        """
+
+        if not tasks:
+            return {}
+
+        from work_agent.core.container import user_service
+
+        employee_ids = {
+            t.employee_id
+            for t in tasks
+        }
+
+        names = {}
+
+        for uid in employee_ids:
+
+            user = user_service.get_by_id(
+                uid,
+            )
+
+            if user:
+
+                names[uid] = (
+                    user.real_name
+                    or user.username
+                    or str(uid)
+                )
+
+        return names

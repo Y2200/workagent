@@ -322,6 +322,10 @@ class IntentRouter:
 
             return {"action": "complete"}
 
+        if "部门任务" in msg or "部门情况" in msg:
+
+            return {"action": "department_tasks"}
+
         return {"action": "list"}
 
 

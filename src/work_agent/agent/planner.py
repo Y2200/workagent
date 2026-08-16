@@ -202,6 +202,7 @@ class AgentPlanner:
                 "confirm",
                 "cancel",
                 "complete",
+                "department_tasks",
             ):
 
                 # LLM 未给出 action 时从消息推断（确定性兜底）
@@ -347,6 +348,10 @@ def _infer_task_action(
     if "全部任务" in msg or "所有任务" in msg:
 
         return "submit_all"
+
+    if "部门任务" in msg or "部门情况" in msg:
+
+        return "department_tasks"
 
     if "提交" in msg or "进度" in msg:
 

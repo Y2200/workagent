@@ -15,6 +15,7 @@ from work_agent.services.prompt_governance_service import prompt_governance_serv
 from work_agent.services.cost_governance_service import cost_governance_service
 from work_agent.services.health_service import health_service
 from work_agent.services.task_service import task_service
+from work_agent.services.user_service import user_service
 from work_agent.services.notification_service import notification_service
 from work_agent.services.task_reminder_service import task_reminder_service
 from work_agent.services.task_stats_service import task_stats_service
@@ -78,6 +79,9 @@ health_service = health_service
 
 # 任务督导单例（services/task_service.py 内定义）
 task_service = task_service
+
+# 用户业务服务（Enterprise Agent 工具经此访问用户，禁止工具直连 DB）
+user_service = user_service
 
 # 统一通知单例（services/notification_service.py 内定义）
 notification_service = notification_service
