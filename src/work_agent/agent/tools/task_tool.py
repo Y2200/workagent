@@ -32,6 +32,7 @@ class TaskTool(BaseTool):
                     "employee_tasks",
                     "create",
                     "summary",
+                    "transition",
                 ],
             },
             "query": {
@@ -53,6 +54,7 @@ class TaskTool(BaseTool):
         "employee_tasks": "task:view",
         "create": "task:create",
         "summary": "task:view",
+        "transition": "task:manage",
     }
 
 
@@ -374,7 +376,7 @@ class TaskTool(BaseTool):
         # 任务发布：解析 → 待确认草稿（不落正式表）
         if action == "create":
 
-            return task_service.preview_create_task(
+            result = task_service.preview_create_task(
                 creator_id=context.user_id,
                 creator_tenant_id=context.tenant_id,
                 content=content or query,
@@ -384,6 +386,39 @@ class TaskTool(BaseTool):
                     None,
                 ),
             )
+
+            # Task Command Validator（Phase 8）：校验解析后的任务命令完整性
+            # 拒绝自由文本/缺关键字段；preview 已做确定性解析，此处校验 draft
+            if result.get("status") == "awaiting_confirmation":
+
+                from work_agent.agent.tools.validator import (
+                    task_command_validator,
+                )
+
+                draft = result.get("draft") or {}
+
+                check = task_command_validator.validate_business(
+                    context=context,
+                    assignee_id=draft.get("employee_id"),
+                    assignee_name=draft.get("employee_name"),
+                    title=draft.get("title", ""),
+                    tenant_id=context.tenant_id,
+                    deadline=draft.get("deadline"),
+                )
+
+                if not check.valid:
+
+                    return {
+                        "status": "need_info",
+                        "message": "任务命令校验失败：\n"
+                        + "\n".join(
+                            f"- {e}"
+                            for e in check.errors
+                        ),
+                        "missing": ["title", "employee_name", "deadline"],
+                    }
+
+            return result
 
         # 部门任务汇总（summary_task，部门经理/系统）
         if action == "summary":
@@ -407,6 +442,35 @@ class TaskTool(BaseTool):
                 "overdue_tasks": report.get("overdue_tasks", [])[:10],
                 "risky_tasks": report.get("risky_tasks", [])[:10],
             }
+
+        # 任务状态转移（Task Lifecycle，Phase 9：经理取消/推进）
+        if action == "transition":
+
+            to_state = (
+                kwargs.get("to_state")
+                or kwargs.get("state")
+                or ""
+            )
+
+            task_id = kwargs.get("task_id")
+
+            if not task_id or not to_state:
+
+                return {
+                    "status": "error",
+                    "message": "请提供 task_id 和 to_state（如 cancelled/completed）",
+                }
+
+            return task_service.transition(
+                tenant_id=(
+                    context.tenant_id
+                    if context.tenant_id
+                    else None
+                ),
+                task_id=int(task_id),
+                to_state=to_state,
+                actor_id=context.user_id,
+            )
 
         # 确认 / 取消：优先消解任务创建草稿，其次进度确认
         if action == "confirm":

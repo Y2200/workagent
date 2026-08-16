@@ -144,6 +144,104 @@ class TaskService:
 
             db.close()
 
+    def transition(
+            self,
+            *,
+            tenant_id: str | None,
+            task_id: int,
+            to_state: str,
+            actor_id: int | None = None
+    ) -> dict:
+
+        """
+        统一任务状态转移（Task Lifecycle，Phase 9）
+
+        经 task_flow 状态机校验合法转移，再更新 status。
+        tenant_id=None 表示平台管理员跳过校验。
+
+        返回：
+            {"status": "transitioned", "task": {...}}
+            或 {"status": "invalid_transition", "message": ...}
+        """
+
+        from work_agent.agent.task_flow import (
+            TaskFlowError,
+            validate_transition,
+        )
+
+        db = SessionLocal()
+
+        try:
+
+            task = self.repository.get_by_id(
+                db,
+                task_id,
+            )
+
+            if not task:
+
+                return {
+                    "status": "error",
+                    "message": f"任务不存在: {task_id}",
+                }
+
+            if tenant_id and task.tenant_id != tenant_id:
+
+                raise TenantAccessDenied(
+                    "跨租户访问任务"
+                )
+
+            # 状态机校验（映射现有字段，不破坏 stats/reminder）
+            try:
+
+                new_db_status = validate_transition(
+                    task.status,
+                    to_state,
+                )
+
+            except TaskFlowError as exc:
+
+                return {
+                    "status": "invalid_transition",
+                    "message": str(exc),
+                    "current": task.status,
+                }
+
+            task.status = new_db_status
+
+            db.commit()
+
+            db.refresh(task)
+
+            return {
+                "status": "transitioned",
+                "task": self._task_dict(task),
+                "to_state": to_state,
+            }
+
+        finally:
+
+            db.close()
+
+    def cancel_task(
+            self,
+            *,
+            tenant_id: str | None,
+            task_id: int,
+            actor_id: int | None = None
+    ) -> dict:
+
+        """
+        取消任务（任何非终态 → cancelled）
+        """
+
+        return self.transition(
+            tenant_id=tenant_id,
+            task_id=task_id,
+            to_state="cancelled",
+            actor_id=actor_id,
+        )
+
     def get_task(
             self,
             *,
