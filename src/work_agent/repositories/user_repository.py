@@ -104,6 +104,84 @@ class UserRepository:
         )
 
 
+    def search_by_name(
+            self,
+            db: Session,
+            keyword: str,
+            tenant_id: str = ""
+    ) -> list[User]:
+
+        """
+        按姓名/账号精确或模糊解析员工（Enterprise Agent user_tool）
+
+        tenant_id 非空时限定本租户（租户管理员/部门管理员）；
+        空则平台全量（SUPER_ADMIN）。
+        优先 real_name/username 精确匹配，其次模糊（like）。
+        """
+
+        if not keyword:
+            return []
+
+        query = db.query(User)
+
+        if tenant_id:
+            query = query.filter(
+                User.tenant_id == tenant_id
+            )
+
+        like = f"%{keyword}%"
+
+        return (
+            query.filter(
+                (
+                    User.real_name.like(like)
+                    | User.username.like(like)
+                    | User.wechat_user_id.like(like)
+                )
+            )
+            .order_by(
+                # 精确匹配优先
+                (User.real_name == keyword).desc(),
+                (User.username == keyword).desc(),
+                User.id,
+            )
+            .limit(20)
+            .all()
+        )
+
+
+    def list_by_department(
+            self,
+            db: Session,
+            department: str,
+            tenant_id: str = ""
+    ) -> list[User]:
+
+        """
+        按部门查询用户（Enterprise Agent 部门成员）
+
+        多租户铁律：tenant_id 非空时按租户过滤
+        """
+
+        if not department:
+            return []
+
+        query = db.query(User)
+
+        if tenant_id:
+            query = query.filter(
+                User.tenant_id == tenant_id
+            )
+
+        return (
+            query.filter(
+                User.department == department
+            )
+            .order_by(User.id)
+            .all()
+        )
+
+
     def create(
             self,
             db: Session,

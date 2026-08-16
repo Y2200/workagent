@@ -4,6 +4,7 @@ from work_agent.agent.tools.document_tool import DocumentTool
 from work_agent.agent.tools.knowledge_tool import KnowledgeTool
 from work_agent.agent.tools.permission_tool import PermissionTool
 from work_agent.agent.tools.task_tool import TaskTool
+from work_agent.agent.tools.user_tool import UserTool
 
 
 class ToolRegistry:
@@ -28,6 +29,7 @@ class ToolRegistry:
                 AuditTool(),
                 AnalysisTool(),
                 TaskTool(),
+                UserTool(),
             ]
         ):
 

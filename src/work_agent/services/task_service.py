@@ -222,6 +222,35 @@ class TaskService:
 
             db.close()
 
+    def list_tasks_by_department(
+            self,
+            *,
+            tenant_id: str | None,
+            department: str,
+            status: str | None = None
+    ):
+
+        """
+        按部门查任务清单（Enterprise Agent department_tasks）
+
+        tenant_id=None 平台管理员全量；department 自由文本匹配。
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            return self.repository.list_by_department(
+                db,
+                tenant_id=tenant_id,
+                department=department,
+                status=status,
+            )
+
+        finally:
+
+            db.close()
+
     def get_employee_task_by_title(
             self,
             *,

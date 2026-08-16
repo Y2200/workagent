@@ -97,6 +97,46 @@ class TaskRepository:
             .all()
         )
 
+    def list_by_department(
+            self,
+            db: Session,
+            tenant_id: str | None = None,
+            department: str = "",
+            status: str | None = None
+    ) -> list[Task]:
+
+        """
+        按部门查任务清单（Enterprise Agent department_tasks）
+
+        tenant_id=None 表示平台管理员，不做租户过滤。
+        department 是自由文本（tasks.department 冗余字段），与用户部门字符串匹配。
+        TODO(Enterprise)：后续改 department_id 外键后此处改为关联查询
+        """
+
+        if not department:
+            return []
+
+        query = db.query(Task).filter(
+            Task.department == department
+        )
+
+        if tenant_id:
+
+            query = query.filter(
+                Task.tenant_id == tenant_id
+            )
+
+        if status:
+
+            query = query.filter(
+                Task.status == status
+            )
+
+        return (
+            query.order_by(Task.deadline.asc(), Task.id.asc())
+            .all()
+        )
+
     def get_employee_tasks(
             self,
             db: Session,
