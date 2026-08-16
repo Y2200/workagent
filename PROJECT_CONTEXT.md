@@ -6,7 +6,17 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-16，租户语义修复完成：企微可查 Web 文档）
+# ⚡ 当前状态（2026-08-16，Enterprise Agent 工具编排层完成 4 Phase）
+
+**代码状态**：本地 `master` = `70bc1f1`（Enterprise Agent Phase 1-4）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+## 最新（2026-08-16）：升级为企业智能任务 Agent（4 Phase 完成）
+- **目标**：从"提问→LLM→查库→回答"升级为"企业 Agent 工具编排层"（非聊天机器人），任务 Agent 为核心
+- **Phase 1 基础能力**：BaseTool 统一权限钩子、AgentContext.role_codes、ToolRegistry 含权限信息、TaskTool schema 修复
+- **Phase 2 任务查询**：task_tool.department_tasks（按部门查任务）、user_tool（解析员工/部门成员）、check_department_scope、UserService（Tool 经 Service 禁直连 DB）
+- **Phase 3 任务创建**：task_pending_creates 表 + preview/confirm/cancel create（企微多轮确认）；执行人 DB 确定性、日期代码规则、LLM 仅补描述；TASK_CREATE 意图
+- **Phase 4 通知+督办**：notification_tool（企微/邮件提醒，send_email 确认+SMTP 检查）、主动督办增强（staleness/部门 digest）、周报部门经理投递、agent_logs.confirmed 审计字段、task:notify 权限码
+- **测试**：test_enterprise_agent（Part A-F 12 项）+ test_task_reminder_extended（5 项）+ 全量回归绿
 
 **代码状态**：本地 `master` = `a6eb3ed`（一致性修复）+ 租户语义修复（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
@@ -443,6 +453,8 @@ python -m work_agent.scripts.test_user_management         # 用户管理增强�
 python -m work_agent.scripts.test_task_stats              # 任务统计/周报/邮件（Phase 4）
 python -m work_agent.scripts.test_document_consistency   # 文档 PG/Milvus 一致性（删除-管线竞态修复）
 python -m work_agent.scripts.test_tenant_global_docs     # 租户语义：空租户文档全局可见（企微查不到 Web 文档修复）
+python -m work_agent.scripts.test_enterprise_agent       # Enterprise Agent（工具权限/用户/通知/部门/任务创建确认/意图）
+python -m work_agent.scripts.test_task_reminder_extended # 督办增强（staleness/部门 digest/周报部门投递）
 
 # 启动服务
 python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000
