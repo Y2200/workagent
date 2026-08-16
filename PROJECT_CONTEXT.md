@@ -6,16 +6,25 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-16，轻量 State + RAG 会话记忆完成 4 Phase；Memory 边界冻结）
+# ⚡ 当前状态（2026-08-17，企业任务型 Agent 升级 6-4 路线 Phase 7A-12 全部完成）
+
+**代码状态**：本地 `master` = `c4c68c9`，工作区干净，全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+## 最新（2026-08-16→17）：企业任务型 Agent 升级（6-4.txt 路线 Phase 7A-12）
+- **核心原则**：不是通用聊天 Agent，而是**企业任务执行 Agent**（Manager/Employee/System 三角色）
+- **Phase 7A 企业任务决策层**：`agent/policy.py`（意图级前置 RBAC，双保险）+ RBAC +7 权限码（task:submit/view_employee/remind/email:send/policy:view/system:scan/report:send）+ 8 任务意图拆分（query_my/query_employee/create/submit/remind/summary/policy_query/unknown）+ Planner 结构化 command + summary
+- **Phase 8 Task Command Validator**：`agent/tools/validator.py`（Schema 结构校验拒绝自由文本 + 业务规则：执行人存在/同部门/deadline/查重）
+- **Phase 9 Task Lifecycle**：`agent/task_flow.py` 状态机（CREATED→ASSIGNED→IN_PROGRESS→SUBMITTED→REVIEWED→COMPLETED，任何阶段 CANCELLED；映射现有字段）+ task_service.transition
+- **Phase 10 Enterprise Knowledge**：`agent/organization.py` 权限类问题（"我能不能申请远程办公"）结合用户画像（角色/部门/权限）回答
+- **Phase 11 System Proactive Agent**：`agent/system_agent.py`（is_system + Policy system 权限校验，scheduler 接入）
+- **Phase 12 Evaluation 增强**：agent_cases.json +5 任务 case（55 条）；顺带修复 intent_router fallback 歧义 + cost_governance 时区 bug
+- **验证**：生产套件 6/6+契约；评测 55 条通过 52（intent 0.9167/安全/隔离/回归 1.0）；新增测试 test_policy/test_validator/test_task_flow/test_knowledge_enterprise/test_system_agent
 
 **Memory 边界冻结（2026-08-16 用户确认）**：Work-Agent 不是陪聊机器人，Memory 只负责"保证当前任务连续理解"，不保存用户一切历史。**冻结范围**：
 - ✅ 做：conversation_id（会话身份）、conversation_messages（完整历史，不删）、最近 6 轮 Context Window（转 BaseMessage 进 AgentContext.chat_history）、Query Rewrite（history 只用于改写，不 embedding）
 - ❌ 不做：>6 轮长期记忆、用户习惯记忆、通用长期记忆管理器、Summary Memory、自动记忆提取
 - ⚠️ 企业事实（员工/部门/职责）不写入 Memory，由 RAG/DB 负责（事实会变，存 Memory 造成数据冲突）
-- 后续开发重点转向：Agent Planner 能力、Tool 调用可靠性、企业流程自动化、主动任务发现、权限审批闭环
 - 规则：后续新增 Memory 能力必须重新评估价值与复杂度
-
-**代码状态**：本地 `master` = `b41f407` + Phase 4（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
 ## 最新（2026-08-16）：轻量统一 State + RAG 会话记忆（6-3.txt 调整版）
 - **目标**：补上 Agent 连续上下文（conversations 表原只有 message_count 零历史；"那经理呢？"追问无法工作）
@@ -62,10 +71,10 @@
 - 企微链路排障：闲聊路由 + 督导 JSON 容错（"你好"不再"系统繁忙"）
 - 邮件基础设施：SMTP + `User.email` + 任务完成邮件 + 每周周报（`EMAIL_ENABLED` 默认关）
 
-## ⏳ 明天继续（唤醒后优先）
-1. **服务器部署验证**：`git pull` → `bash deploy.sh` → `python -m work_agent.scripts.migrate_user_profile`（幂等补 email 列）→ `restart backend`；`.env` 开 `TASK_REMINDER_ENABLED=true`、按需配 `SMTP_*`+`EMAIL_ENABLED=true`、`WEEKLY_REPORT_ENABLED=true`+`WEEKLY_REPORT_EMAILS`
-2. 验证：任务统计页/导出/周报；配好 SMTP 后任务完成收邮件；企微「你好」返回引导
-3. 后续开发：前端治理看板接入（P5-5）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）
+## ⏳ 唤醒后优先（2026-08-17 存进度）
+1. **服务器部署验证（6-4 企业任务型 Agent）**：`git pull` → `docker compose -f deploy/docker-compose.prod.yml --env-file .env exec backend python -m work_agent.scripts.seed_rbac`（+7 权限码）→ `up -d --build backend`
+2. 验证三角色权限：员工发"给张三安排任务"→拒绝；经理发同消息→确认流；员工"我能不能申请远程办公"→结合角色回答；定时任务（TASK_REMINDER_ENABLED=true）→ System Agent 扫描提醒
+3. 后续方向（未做）：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地
 
 ## 任务督导（已完成，全量回归绿）
 - **模型**：`tasks`/`task_updates`/`task_pending_updates`/`task_notifications` 四表（`db/models/task.py` + `scripts/migrate_tasks.py`）
@@ -99,9 +108,9 @@
 - 测试：`scripts/test_task_stats.py` 6 部分；回归 test_task_agent 11/11、test_user_management 8/8、生产套件 6/6+契约、前端 build
 
 ## 下一步
-1. **部署到服务器（含 Phase 3 + 用户管理 + Phase 4）**：`git pull` → `deploy.sh` → `python -m work_agent.scripts.migrate_tasks` → `python -m work_agent.scripts.migrate_user_profile`（幂等，补 email 列）；`.env` 开 `TASK_REMINDER_ENABLED=true`、按需配 `SMTP_*`+`EMAIL_ENABLED=true`、`WEEKLY_REPORT_ENABLED=true`+`WEEKLY_REPORT_EMAILS`；前端随 deploy 重新构建
-2. 验证：Web 建任务 → 负责人企微收提醒；企微任务交互；到点收督办提醒；任务统计页/导出/周报；Web 新建用户（含邮箱）→登录→绑定企微→企微识别；配好 SMTP 后任务完成收邮件
-3. 后续（未做）：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）
+1. **部署到服务器（6-4 企业任务型 Agent）**：`git pull` → `docker compose -f deploy/docker-compose.prod.yml --env-file .env exec backend python -m work_agent.scripts.seed_rbac`（+7 权限码：task:submit/view_employee/remind/email:send/policy:view/system:scan/report:send）→ `up -d --build backend`（代码进容器）
+2. 验证三角色权限（见上方"唤醒后优先"）
+3. 后续（未做）：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 
@@ -474,6 +483,11 @@ python -m work_agent.scripts.test_tenant_global_docs     # 租户语义：空租
 python -m work_agent.scripts.test_enterprise_agent       # Enterprise Agent（工具权限/用户/通知/部门/任务创建确认/意图）
 python -m work_agent.scripts.test_task_reminder_extended # 督办增强（staleness/部门 digest/周报部门投递）
 python -m work_agent.scripts.test_rag_memory            # RAG 会话记忆（历史/rewrite/统一上下文/隔离容错）
+python -m work_agent.scripts.test_policy                 # 企业任务决策层（Policy RBAC：三角色权限/confirm双用途/system）
+python -m work_agent.scripts.test_validator              # Task Command Validator（结构/业务规则校验）
+python -m work_agent.scripts.test_task_flow              # Task Lifecycle 状态机（转移/取消/超管权限）
+python -m work_agent.scripts.test_knowledge_enterprise   # Enterprise Knowledge（权限类问题结合用户画像）
+python -m work_agent.scripts.test_system_agent           # System Proactive Agent（system 权限/主动扫描）
 python -m work_agent.scripts.migrate_conversation_messages # 会话消息表迁移（幂等）
 
 # 启动服务
