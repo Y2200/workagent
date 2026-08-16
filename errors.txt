@@ -597,3 +597,13 @@ Phase：任务统计/周报/邮件（Phase 4）
 修复：① 改 from fastapi.responses import StreamingResponse；② 测试 _cleanup 清空租户1/2 任务 + 统计前清数据保证确定性
 验证：test_task_stats 6/6 全绿 + 回归全绿
 ====================
+====================
+时间：2026-08-16
+Phase：文档一致性（删除-管线竞态）
+文件：services/document_service.py + document/pipeline.py
+问题：Web 上传后立即删除文档 → Milvus 孤儿向量（PG documents/knowledge_chunks 已删、Milvus 向量残留），后续搜索被孤儿污染，删除后新导入的文档可能被孤儿挤出 top_k（用户报告"中间删除后新导入查不到"）
+原因：upload 建记录(processing) 后异步管线线程池执行；删除若在管线插入 Milvus 前完成——delete 时 knowledge_chunks 为空 → delete_by_ids 拿空、delete_by_document 删 0 条；随后管线才把 document_id 向量插进 Milvus → 孤儿。delete_by_document 兜底本身有效，但时序上删不到"还没插入的向量"
+修复：① delete() 开头先把 status 置 deleting（提交），通知并发管线停止；② pipeline.process() 插入 Milvus 前 _is_active 校验（独立 Session 查 status≠deleting/deleted），被删则跳过插入；③ 插入后落库前二次校验，被删则 delete_by_document 回滚刚插入向量（自愈）；④ 测试 test_document_consistency 3 部分（顺序删除彻底/删除后新导入可检索/竞态最终 0 孤儿）
+验证：竞态复现 8 轮最终 0 孤儿；test_document_consistency 3/3；回归 test_permission/test_tenant_admin/test_permission_management/test_security_regression/test_milvus/生产套件 6/6+契约/test_agent_intelligence/test_task_agent/test_user_management 全绿
+教训：异步管线（ThreadPoolExecutor）与删除操作必须互斥；删除需先发"停止信号"再清理，管线插入前后各校验一次防止竞态窗口
+====================
