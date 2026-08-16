@@ -27,12 +27,22 @@ class KnowledgeAgent(BaseAgent):
 
     def __init__(
             self,
-            knowledge_tool: KnowledgeTool | None = None
+            knowledge_tool: KnowledgeTool | None = None,
+            query_rewriter=None
     ):
 
         self.knowledge_tool = knowledge_tool or KnowledgeTool()
 
         self.llm = get_llm()
+
+        # RAG 查询改写（会话记忆，Phase 2；失败静默回退原 query）
+        self.query_rewriter = query_rewriter
+
+        if self.query_rewriter is None:
+
+            from work_agent.agent.query_rewriter import query_rewriter
+
+            self.query_rewriter = query_rewriter
 
 
     def run(
@@ -49,8 +59,31 @@ class KnowledgeAgent(BaseAgent):
             else None
         )
 
+        # ======================
+        # RAG 会话记忆：结合 chat_history 改写查询词
+        # context.chat_history 由 runtime context_builder 统一加载（Phase 1）
+        # rewrite 失败 → 返回原 query → 完全退化为现状
+        # 答案 prompt 仍用原始 message（回答"那经理呢？"），知识片段来自改写后检索
+        # ======================
+
+        history = (
+            getattr(context, "chat_history", None)
+            or []
+        )
+
+        try:
+
+            search_query = self.query_rewriter.rewrite_query(
+                message,
+                history,
+            )
+
+        except Exception:
+
+            search_query = message
+
         tool_result = self.knowledge_tool.execute(
-            query=message,
+            query=search_query,
             user_context=context.to_user_context(),
             top_k=(
                 step.args.get("top_k", 5)

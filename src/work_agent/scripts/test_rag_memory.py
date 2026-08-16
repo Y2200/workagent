@@ -132,15 +132,144 @@ def test_a2_empty_and_scope():
     print("✓ PartA2 空会话防御 + scope 字段")
 
 
+def test_b_query_rewrite():
+    """Part B：query rewrite（指代词优先 _is_follow_up）"""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from work_agent.agent.query_rewriter import QueryRewriter
+
+    # fake LLM 返回固定改写
+    class _FakeLLM:
+        def __init__(self, out):
+            self.out = out
+        def invoke(self, prompt):
+            class _R:
+                content = self.out
+            return _R()
+
+    # failing LLM（抛异常 → 走确定性兜底）
+    class _FailingLLM:
+        def invoke(self, prompt):
+            raise RuntimeError("llm down")
+
+    history = [
+        HumanMessage(content="差旅住宿标准是什么"),
+        AIMessage(content="员工每晚400元"),
+    ]
+
+    rewriter = QueryRewriter(llm=_FakeLLM("公司差旅经理住宿标准"))
+
+    # 无历史 → 原样
+    assert rewriter.rewrite_query("那经理呢？", []) == "那经理呢？"
+
+    # 独立问题 → 原样（_is_follow_up False）
+    assert rewriter.rewrite_query("差旅住宿标准是什么", history) == "差旅住宿标准是什么"
+
+    # 追问 + fake LLM → 用 LLM 输出
+    assert rewriter.rewrite_query("那经理呢？", history) == "公司差旅经理住宿标准"
+
+    # 追问 + failing LLM → 确定性兜底（含实体"经理" + 基底"差旅住宿标准"）
+    fallback = QueryRewriter(llm=_FailingLLM()).rewrite_query("那经理呢？", history)
+    assert "经理" in fallback and "差旅" in fallback, fallback
+
+    # _is_follow_up 指代词判定
+    assert QueryRewriter._is_follow_up("那经理呢？") is True
+    assert QueryRewriter._is_follow_up("这个制度有效期呢") is True
+    assert QueryRewriter._is_follow_up("多少钱？") is True
+    assert QueryRewriter._is_follow_up("差旅住宿标准是什么") is False
+    assert QueryRewriter._is_follow_up("报销流程怎么走") is False
+
+    print("✓ PartB query rewrite（指代词/独立问题/LLM/兜底）")
+
+
+def test_b2_rewrite_retrieval():
+    """Part B2：rewrite 后仍能检索（集成，确定性）"""
+    import time
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from work_agent.agent.query_rewriter import QueryRewriter
+    from work_agent.core.container import document_service, rag_service
+    from work_agent.repositories.document_repository import DocumentRepository
+
+    class _FailingLLM:
+        def invoke(self, prompt):
+            raise RuntimeError("llm down")
+
+    # 上传差旅制度文档（租户1）
+    content = (
+        "公司差旅住宿标准制度：\n"
+        "1. 员工出差住宿标准：每晚不超过400元。\n"
+        "2. 经理出差住宿标准：每晚不超过600元。\n"
+        "3. 报销需提供发票。"
+    )
+    doc = document_service.upload(
+        filename="差旅住宿标准制度.md",
+        data=content.encode("utf-8"),
+        category="制度",
+        uploader="admin",
+        tenant_id="1",
+    )
+
+    # 等 ready
+    db = SessionLocal()
+    try:
+        repo = DocumentRepository()
+        start = time.time()
+        status = "processing"
+        while time.time() - start < 60:
+            db.expire_all()
+            d = repo.get_by_id(db, doc.id)
+            if d and d.status in ("ready", "failed"):
+                status = d.status
+                break
+            time.sleep(1)
+        assert status == "ready", f"文档未 ready: {status}"
+    finally:
+        db.close()
+
+    try:
+        history = [
+            HumanMessage(content="员工出差住宿标准是什么"),
+            AIMessage(content="每晚不超过400元"),
+        ]
+        rewriter = QueryRewriter(llm=_FailingLLM())
+        rewritten = rewriter.rewrite_query("那经理呢？", history)
+        assert "经理" in rewritten, rewritten
+
+        # rewrite 后检索 → 命中经理标准片段
+        meta = rag_service.search_with_meta(
+            rewritten,
+            top_k=5,
+            user_context={
+                "tenant_id": "1",
+                "department": "研发部",
+                "role": "员工",
+            },
+        )
+        texts = [h.get("text", "") for h in meta["results"]]
+        assert meta["candidates"] > 0, meta
+        assert any(
+            "经理" in t and "600" in t
+            for t in texts
+        ), f"应命中经理标准，实际: {texts[:2]}"
+
+        print("✓ PartB2 rewrite 后检索命中经理标准")
+    finally:
+        document_service.delete(doc.id, tenant_id="1")
+
+
 def test():
-    print("== RAG 会话记忆测试（Phase 1）==")
+    print("== RAG 会话记忆测试（Phase 1-2）==")
     _cleanup()
     try:
         test_a_storage_and_window()
         test_a2_empty_and_scope()
+        test_b_query_rewrite()
+        test_b2_rewrite_retrieval()
     finally:
         _cleanup()
-    print("RAG 会话记忆测试（Phase 1）通过")
+    print("RAG 会话记忆测试（Phase 1-2）通过")
 
 
 if __name__ == "__main__":
