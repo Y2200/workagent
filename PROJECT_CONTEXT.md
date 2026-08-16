@@ -6,7 +6,14 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-16，轻量 State + RAG 会话记忆完成 4 Phase）
+# ⚡ 当前状态（2026-08-16，轻量 State + RAG 会话记忆完成 4 Phase；Memory 边界冻结）
+
+**Memory 边界冻结（2026-08-16 用户确认）**：Work-Agent 不是陪聊机器人，Memory 只负责"保证当前任务连续理解"，不保存用户一切历史。**冻结范围**：
+- ✅ 做：conversation_id（会话身份）、conversation_messages（完整历史，不删）、最近 6 轮 Context Window（转 BaseMessage 进 AgentContext.chat_history）、Query Rewrite（history 只用于改写，不 embedding）
+- ❌ 不做：>6 轮长期记忆、用户习惯记忆、通用长期记忆管理器、Summary Memory、自动记忆提取
+- ⚠️ 企业事实（员工/部门/职责）不写入 Memory，由 RAG/DB 负责（事实会变，存 Memory 造成数据冲突）
+- 后续开发重点转向：Agent Planner 能力、Tool 调用可靠性、企业流程自动化、主动任务发现、权限审批闭环
+- 规则：后续新增 Memory 能力必须重新评估价值与复杂度
 
 **代码状态**：本地 `master` = `b41f407` + Phase 4（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
