@@ -94,6 +94,7 @@ def test():
             "audit:view",
             "task:view",
             "task:create",
+            "task:notify",
         }, dept_perms
 
         assert user_perms == {

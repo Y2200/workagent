@@ -71,14 +71,33 @@ def _daily_reminder_job() -> None:
 
     try:
 
+        department = (
+            settings.task_reminder_department
+            or ""
+        )
+
         summary = task_reminder_service.scan_and_remind(
             min_risk=settings.task_reminder_min_risk,
+            department=department,
         )
 
         logger.info(
             "任务督办提醒完成：%s",
             summary,
         )
+
+        # Enterprise Agent：部门管理员 digest（默认关闭）
+        if settings.task_reminder_manager_digest:
+
+            digest = task_reminder_service.remind_department_admins(
+                department=department,
+                min_risk=settings.task_reminder_min_risk,
+            )
+
+            logger.info(
+                "部门管理员 digest 完成：%s",
+                digest,
+            )
 
     except Exception:
 
@@ -175,6 +194,16 @@ def _weekly_report_job() -> None:
                 "周报邮件 to=%s status=%s",
                 to,
                 outcome["status"],
+            )
+
+        # Enterprise Agent：周报部门经理 digest（默认关闭）
+        if settings.weekly_report_manager_digest:
+
+            digests = task_report_service.send_department_digests()
+
+            logger.info(
+                "周报部门经理 digest 完成：%s",
+                digests,
             )
 
     except Exception:

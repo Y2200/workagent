@@ -73,7 +73,9 @@ class _FakeRepo:
 
     def list_remindable(
             self,
-            db
+            db,
+            tenant_id=None,
+            department=""
     ):
 
         return self.tasks

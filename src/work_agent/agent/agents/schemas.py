@@ -47,6 +47,12 @@ class AgentResult(BaseModel):
         description="工具调用详情"
     )
 
+    # 风险操作是否经用户确认（Enterprise Agent；None=不适用）
+    confirmed: bool | None = Field(
+        default=None,
+        description="是否经用户确认"
+    )
+
 
     def to_dict(self) -> dict:
 
@@ -62,4 +68,5 @@ class AgentResult(BaseModel):
             "token_usage": self.token_usage,
             "tools_called": self.tools_called,
             "tool_calls": self.tool_calls,
+            "confirmed": self.confirmed,
         }

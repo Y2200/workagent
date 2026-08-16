@@ -2,6 +2,7 @@ from work_agent.agent.tools.analysis_tool import AnalysisTool
 from work_agent.agent.tools.audit_tool import AuditTool
 from work_agent.agent.tools.document_tool import DocumentTool
 from work_agent.agent.tools.knowledge_tool import KnowledgeTool
+from work_agent.agent.tools.notification_tool import NotificationTool
 from work_agent.agent.tools.permission_tool import PermissionTool
 from work_agent.agent.tools.task_tool import TaskTool
 from work_agent.agent.tools.user_tool import UserTool
@@ -30,6 +31,7 @@ class ToolRegistry:
                 AnalysisTool(),
                 TaskTool(),
                 UserTool(),
+                NotificationTool(),
             ]
         ):
 

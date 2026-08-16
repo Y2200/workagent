@@ -67,6 +67,32 @@ class RBACRepository:
         }
 
 
+    def list_user_ids_by_role(
+            self,
+            db: Session,
+            role_code: str
+    ) -> list[int]:
+
+        """
+        按角色码查询所有用户 id（Enterprise Agent 部门管理员 digest 用）
+        """
+
+        rows = (
+            db.query(UserRole.user_id)
+            .join(
+                Role,
+                Role.id == UserRole.role_id,
+            )
+            .filter(Role.code == role_code)
+            .all()
+        )
+
+        return [
+            user_id
+            for (user_id,) in rows
+        ]
+
+
     def get_role_by_code(
             self,
             db: Session,

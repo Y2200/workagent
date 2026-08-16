@@ -18,6 +18,7 @@ import math
 
 from datetime import datetime
 
+from work_agent.db.models import User
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.task_repository import TaskRepository
 from work_agent.repositories.user_repository import UserRepository
@@ -248,13 +249,16 @@ class TaskReminderService:
             self,
             now: datetime | None = None,
             min_risk: str = "medium",
-            dry_run: bool = False
+            dry_run: bool = False,
+            tenant_id: str | None = None,
+            department: str = ""
     ) -> dict:
 
         """
-        每日督办核心：扫描全部未完成含截止任务 → 判断风险 →
+        每日督办核心：扫描未完成含截止任务 → 判断风险 →
         达到阈值则企微提醒员工。
 
+        tenant_id / department 可选定向（Enterprise Agent Phase 4）。
         dry_run=True 只统计不发送不落库（安全手验）。
 
         返回：
@@ -282,7 +286,11 @@ class TaskReminderService:
 
         try:
 
-            tasks = self.repository.list_remindable(db)
+            tasks = self.repository.list_remindable(
+                db,
+                tenant_id=tenant_id,
+                department=department,
+            )
 
             summary["scanned"] = len(tasks)
 
@@ -356,6 +364,268 @@ class TaskReminderService:
         finally:
 
             db.close()
+
+    # ======================
+    # 部门管理员督办摘要（Enterprise Agent Phase 4）
+    # ======================
+
+    @staticmethod
+    def compute_staleness(
+            task,
+            now: datetime | None = None
+    ) -> int:
+
+        """
+        计算任务已停滞天数（确定性，无 LLM）
+
+        规则：status∈{pending,processing} 且含截止，且 updated_at 距今 >3 天
+        才视为停滞；返回天数（否则 0）。仅用于摘要文案「N 天未更新」，
+        不影响 compute_risk（避免回归 test_task_reminder Part1）。
+        """
+
+        from datetime import timedelta
+
+        now = now or datetime.now()
+
+        if task.status not in ("pending", "processing"):
+
+            return 0
+
+        if not task.deadline:
+
+            return 0
+
+        updated = task.updated_at or task.created_at
+
+        if not updated:
+
+            return 0
+
+        days = (
+            now - updated
+        ).total_seconds() / 86400.0
+
+        if days <= 3:
+
+            return 0
+
+        return max(1, int(days))
+
+    @staticmethod
+    def build_digest_text(
+            department: str,
+            risky: list,
+            now: datetime | None = None
+    ) -> str:
+
+        """
+        部门高风险任务摘要（发给部门经理，非逐条推送）
+        """
+
+        now = now or datetime.now()
+
+        if not risky:
+
+            return f"{department or '本部门'}当前无高风险任务。"
+
+        lines = [
+            f"{department or '本部门'}重点关注任务（{len(risky)}项）：",
+            "",
+        ]
+
+        for task, risk in risky:
+
+            lines.append(
+                f"- {task.title}"
+                f"（进度{task.progress}%，"
+                f"截止{task.deadline.strftime('%m月%d日') if task.deadline else '未定'}"
+                f"，{risk['reason']}）"
+            )
+
+        return "\n".join(lines)
+
+    def remind_department_admins(
+            self,
+            department: str = "",
+            tenant_id: str | None = None,
+            min_risk: str = "medium",
+            dry_run: bool = False,
+            now: datetime | None = None
+    ) -> dict:
+
+        """
+        聚合部门高风险任务 → 企微 digest 发给部门管理员（DEPARTMENT_ADMIN）
+
+        多租户铁律：按 tenant_id 过滤；部门管理员按 user.department 字符串匹配
+        （TODO(Enterprise)：后续 department_id 外键后改关联查询）。
+
+        返回：
+        {scanned, risky, reminded, skipped_unbound, failed}
+        """
+
+        now = now or datetime.now()
+
+        remind_levels = _REMIND_LEVELS.get(
+            min_risk,
+            {"medium", "high"},
+        )
+
+        summary = {
+            "scanned": 0,
+            "risky": 0,
+            "reminded": 0,
+            "skipped_unbound": 0,
+            "failed": 0,
+        }
+
+        db = SessionLocal()
+
+        try:
+
+            # 1. 扫描任务（按租户/部门）
+            tasks = self.repository.list_remindable(
+                db,
+                tenant_id=tenant_id,
+                department=department,
+            )
+
+            summary["scanned"] = len(tasks)
+
+            risky = []
+
+            for task in tasks:
+
+                risk = self.compute_risk(
+                    task,
+                    now=now,
+                )
+
+                level = risk["level"]
+
+                if level in remind_levels:
+
+                    risky.append((task, risk))
+
+            summary["risky"] = len(risky)
+
+            if not risky:
+
+                return summary
+
+            # 2. 找部门管理员（DEPARTMENT_ADMIN，department 匹配）
+            admins = self._department_admins(
+                db,
+                department=department or "",
+                tenant_id=tenant_id or "",
+            )
+
+            if not admins:
+
+                return summary
+
+            content = self.build_digest_text(
+                department or "本部门",
+                risky,
+                now=now,
+            )
+
+            # 3. 逐个发送 digest（同内容，非逐条任务推送）
+            for admin in admins:
+
+                if not admin.wechat_user_id:
+
+                    if not dry_run:
+
+                        notification_service.record(
+                            tenant_id=(
+                                admin.tenant_id
+                                or tenant_id
+                                or ""
+                            ),
+                            task_id=0,
+                            receiver_id=admin.id,
+                            channel="wechat",
+                            content=content,
+                            status="failed",
+                        )
+
+                    summary["skipped_unbound"] += 1
+
+                    continue
+
+                if dry_run:
+
+                    summary["reminded"] += 1
+
+                    continue
+
+                result = notification_service.send_wechat(
+                    tenant_id=(
+                        admin.tenant_id
+                        or tenant_id
+                        or ""
+                    ),
+                    task_id=0,
+                    receiver_id=admin.id,
+                    wechat_user_id=admin.wechat_user_id,
+                    content=content,
+                )
+
+                if result.get("ok"):
+
+                    summary["reminded"] += 1
+
+                else:
+
+                    summary["failed"] += 1
+
+            return summary
+
+        finally:
+
+            db.close()
+
+    def _department_admins(
+            self,
+            db,
+            department: str,
+            tenant_id: str = ""
+    ):
+
+        """
+        查询部门管理员用户（DEPARTMENT_ADMIN 角色，department 匹配）
+
+        经 RBACRepository.list_user_ids_by_role + UserRepository。
+        """
+
+        from work_agent.repositories.rbac_repository import RBACRepository
+
+        user_ids = RBACRepository().list_user_ids_by_role(
+            db,
+            "DEPARTMENT_ADMIN",
+        )
+
+        if not user_ids:
+
+            return []
+
+        query = db.query(User).filter(
+            User.id.in_(user_ids),
+        )
+
+        if department:
+
+            query = query.filter(
+                User.department == department,
+            )
+
+        if tenant_id:
+
+            query = query.filter(
+                User.tenant_id == tenant_id,
+            )
+
+        return query.all()
 
 
 # 全局单例

@@ -345,6 +345,194 @@ class TaskReportService:
             "summary": report,
         }
 
+    # ======================
+    # 周报部门经理投递（Enterprise Agent Phase 4）
+    # ======================
+
+    def send_department_digests(
+            self,
+            *,
+            tenant_id: str | None = None,
+            now: datetime | None = None
+    ) -> dict:
+
+        """
+        按部门聚合周报摘要 → 企微 digest 发给该部门经理（DEPARTMENT_ADMIN）
+
+        部门经理看到的是其所在部门所有员工的汇总，不是逐条推送。
+        dry 模式下只统计。
+
+        返回：
+        {departments, digests_sent, skipped_unbound, failed}
+        """
+
+        from work_agent.db.models import User
+        from work_agent.repositories.rbac_repository import RBACRepository
+        from work_agent.services.notification_service import notification_service
+
+        now = now or datetime.now()
+
+        db = SessionLocal()
+
+        try:
+
+            # 1. 全部部门管理员
+            admin_ids = RBACRepository().list_user_ids_by_role(
+                db,
+                "DEPARTMENT_ADMIN",
+            )
+
+            if not admin_ids:
+
+                return {
+                    "departments": [],
+                    "digests_sent": 0,
+                    "skipped_unbound": 0,
+                    "failed": 0,
+                }
+
+            admins = (
+                db.query(User)
+                .filter(User.id.in_(admin_ids))
+                .all()
+            )
+
+            # 2. 每个部门管理员 → 本部门周报摘要
+            summary = {
+                "departments": [],
+                "digests_sent": 0,
+                "skipped_unbound": 0,
+                "failed": 0,
+            }
+
+            seen_departments = set()
+
+            for admin in admins:
+
+                dept = admin.department or ""
+
+                if not dept:
+                    continue
+
+                if dept in seen_departments:
+                    continue
+
+                seen_departments.add(dept)
+
+                report = self.build_weekly_report(
+                    tenant_id=tenant_id,
+                    department=dept,
+                    now=now,
+                )
+
+                content = self._department_digest_text(
+                    dept,
+                    report,
+                )
+
+                summary["departments"].append(dept)
+
+                # 发给该部门所有部门管理员（聚合，非逐条）
+                for mgr in admins:
+
+                    if (mgr.department or "") != dept:
+                        continue
+
+                    if not mgr.wechat_user_id:
+
+                        notification_service.record(
+                            tenant_id=(
+                                mgr.tenant_id
+                                or tenant_id
+                                or ""
+                            ),
+                            task_id=0,
+                            receiver_id=mgr.id,
+                            channel="wechat",
+                            content=content,
+                            status="failed",
+                        )
+
+                        summary["skipped_unbound"] += 1
+
+                        continue
+
+                    result = notification_service.send_wechat(
+                        tenant_id=(
+                            mgr.tenant_id
+                            or tenant_id
+                            or ""
+                        ),
+                        task_id=0,
+                        receiver_id=mgr.id,
+                        wechat_user_id=mgr.wechat_user_id,
+                        content=content,
+                    )
+
+                    if result.get("ok"):
+
+                        summary["digests_sent"] += 1
+
+                    else:
+
+                        summary["failed"] += 1
+
+            return summary
+
+        finally:
+
+            db.close()
+
+    @staticmethod
+    def _department_digest_text(
+            department: str,
+            report: dict
+    ) -> str:
+
+        """
+        部门周报摘要文案（发给部门经理）
+        """
+
+        completed = report.get("completed_tasks") or []
+
+        overdue = report.get("overdue_tasks") or []
+
+        risky = report.get("risky_tasks") or []
+
+        lines = [
+            f"【周报】{department} 本周工作汇总",
+            "",
+            f"完成任务：{len(completed)} 个",
+            f"延期任务：{len(overdue)} 个",
+            f"高风险任务：{len(risky)} 个",
+        ]
+
+        if completed:
+
+            lines.append("")
+            lines.append("完成：")
+
+            for title in completed[:5]:
+
+                lines.append(f"- {title}")
+
+        if risky:
+
+            lines.append("")
+            lines.append("重点关注：")
+
+            for t in risky[:5]:
+
+                lines.append(
+                    f"- {t['title']}"
+                    f"（进度{t['progress']}%，{t['risk_reason']}）"
+                )
+
+        lines.append("")
+        lines.append("详情请登录 Web 后台查看周报。")
+
+        return "\n".join(lines)
+
 
 # 全局单例
 task_report_service = TaskReportService()

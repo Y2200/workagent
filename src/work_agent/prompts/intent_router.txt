@@ -37,11 +37,15 @@
    管理员发布/安排任务给员工（需确认后创建）。
    例如："给张三安排客户系统测试任务，下周五完成" "给李四发布报销审核任务" "安排王五开发登录模块"
 
-8. small_talk
+8. task_remind
+   主动提醒/督促员工完成任务（管理者视角，可经企微或邮件）。
+   例如："提醒张三尽快完成测试任务" "催办李四提交周报" "督促研发部同事完成项目"
+
+9. small_talk
    普通寒暄，无关工作。
    例如："你好" "谢谢" "在吗"
 
-9. unknown
+10. unknown
    无法归类。
 
 # 工具选择
@@ -51,6 +55,7 @@
 - audit_query → need_tool=true, tool=audit_tool
 - task_management → need_tool=true, tool=task_tool
 - task_create → need_tool=true, tool=task_tool
+- task_remind → need_tool=true, tool=notification_tool
 - workflow_request → need_tool=false
 - risk_analysis → need_tool=false
 - small_talk → need_tool=false

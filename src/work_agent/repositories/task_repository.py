@@ -266,23 +266,40 @@ class TaskRepository:
 
     def list_remindable(
             self,
-            db: Session
+            db: Session,
+            tenant_id: str | None = None,
+            department: str = ""
     ) -> list[Task]:
 
         """
         每日督办平台扫描：全部租户未完成任务（pending/processing）且含截止日期
 
+        tenant_id / department 可选过滤（Enterprise Agent Phase 4：
+        按部门/按租户定向督办）。
+
         先例：list_by_tenant(tenant_id=None) 已支持平台管理员不按租户过滤。
         返回任务自带 tenant_id，通知侧按 task.tenant_id 隔离（多租户铁律不变）。
         """
 
-        return (
-            db.query(Task)
-            .filter(
-                Task.deadline.isnot(None),
-                Task.status.in_(["pending", "processing"]),
+        query = db.query(Task).filter(
+            Task.deadline.isnot(None),
+            Task.status.in_(["pending", "processing"]),
+        )
+
+        if tenant_id:
+
+            query = query.filter(
+                Task.tenant_id == tenant_id,
             )
-            .order_by(Task.deadline.asc())
+
+        if department:
+
+            query = query.filter(
+                Task.department == department,
+            )
+
+        return (
+            query.order_by(Task.deadline.asc())
             .all()
         )
 

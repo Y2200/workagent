@@ -27,6 +27,7 @@ class IntentRouter:
         IntentType.RISK_ANALYSIS: ("", False),
         IntentType.TASK_MANAGEMENT: ("task_tool", True),
         IntentType.TASK_CREATE: ("task_tool", True),
+        IntentType.TASK_REMIND: ("notification_tool", True),
         IntentType.SMALL_TALK: ("", False),
         IntentType.UNKNOWN: ("", False),
     }
@@ -358,6 +359,26 @@ class IntentRouter:
                 tool="task_tool",
                 entities={"action": "create"},
                 reasoning="规则回退：命中任务发布关键词",
+            )
+
+        # 主动提醒/督促
+        if (
+            ("提醒" in msg or "催办" in msg or "督促" in msg)
+            and (
+                "员工" in msg
+                or "同事" in msg
+                or "任务" in msg
+                or "完成" in msg
+            )
+        ):
+
+            return IntentResult(
+                intent=IntentType.TASK_REMIND,
+                confidence=0.6,
+                need_tool=True,
+                tool="notification_tool",
+                entities={"action": "send_wechat"},
+                reasoning="规则回退：命中主动提醒关键词",
             )
 
         task_keywords = [

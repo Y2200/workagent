@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, BigInteger, Text, DateTime, Float, Integer, JSON, Index, func
+from sqlalchemy import Boolean, String, BigInteger, Text, DateTime, Float, Integer, JSON, Index, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from work_agent.db.base import Base
@@ -157,6 +157,12 @@ class AgentLog(Base):
     # 调用的工具列表（JSON）
     tools_called: Mapped[list | None] = mapped_column(
         JSON,
+        nullable=True
+    )
+
+    # 是否经用户确认（Enterprise Agent 风险操作；None=不适用）
+    confirmed: Mapped[bool | None] = mapped_column(
+        Boolean,
         nullable=True
     )
 
