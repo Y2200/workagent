@@ -159,4 +159,15 @@ PROMPT_METADATA = {
             "message",
         ],
     },
+    # ======================
+    # RAG 会话记忆（Phase 2）
+    # ======================
+    "conversation_rewrite": {
+        "version": "1.0",
+        "description": "RAG 会话记忆查询改写（追问结合历史补全主体）",
+        "variables": [
+            "query",
+            "history",
+        ],
+    },
 }
