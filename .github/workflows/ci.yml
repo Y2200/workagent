@@ -22,6 +22,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # src-layout 项目：src/ 加入模块搜索路径（Docker 镜像内是 PYTHONPATH=/app/src）
+  PYTHONPATH: src
   # CI 测试环境变量（非敏感默认值，与开发 docker-compose 凭据一致）
   DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/work_agent
   MILVUS_URI: http://localhost:19530
