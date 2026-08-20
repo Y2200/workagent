@@ -37,6 +37,22 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 # 默认跳过集合：预留登记已知与 CI 环境冲突/耗时的脚本（默认全跑，不改动则不设）
 DEFAULT_SKIP: set[str] = set()
 
+# 预测试数据库初始化：确保 schema + 基础种子就绪（CI 全新空库 / 本地既有库均幂等安全）。
+# seed_tenants / seed_knowledge_library 是测试数据，仅测试环境使用（生产 init-prod.sh 明确禁止，此处不受影响）。
+SETUP_MODULES: list[str] = [
+    "init_db",
+    "seed_admin",
+    "seed_tenants",
+    "seed_rbac",
+    "seed_knowledge_library",
+    "migrate_agent_logs",
+    "migrate_agent_intelligence",
+    "migrate_user_profile",
+    "migrate_tasks",
+    "migrate_conversation_messages",
+    "migrate_indexes",
+]
+
 
 def discover_test_scripts() -> list[str]:
     """扫描 scripts/ 下所有 test_*.py（排除本脚本），返回模块名（无 .py）。"""
@@ -53,6 +69,31 @@ def _subprocess_env() -> dict:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     return env
+
+
+def run_setup(modules: list[str]) -> bool:
+    """逐个运行数据库初始化/种子模块；任一失败返回 False（不应继续跑测试）。"""
+    for name in modules:
+        print(f"  [setup] {name} ...", flush=True)
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", f"work_agent.scripts.{name}"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=_subprocess_env(),
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"  [setup] {name} 超时！")
+            return False
+        if proc.returncode != 0:
+            print(f"  [setup] {name} 失败（exit {proc.returncode}）:")
+            print((proc.stderr or proc.stdout or "")[-2000:])
+            return False
+    return True
 
 
 def run_one(name: str, timeout: int, report_dir: Path) -> dict:
@@ -106,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip", help="跳过指定脚本，逗号分隔")
     parser.add_argument("--report-dir", default="reports", help="报告输出目录（默认 reports）")
     parser.add_argument("--timeout", type=int, default=1200, help="单脚本超时秒数（默认 1200）")
+    parser.add_argument("--no-setup", action="store_true", help="跳过预测试数据库初始化（默认会跑 init_db/seed_*/migrate_*）")
     args = parser.parse_args(argv)
 
     names = discover_test_scripts()
@@ -127,6 +169,12 @@ def main(argv: list[str] | None = None) -> int:
         report_dir = REPO_ROOT / report_dir
 
     print(f"仓库根: {REPO_ROOT}")
+    if not args.no_setup:
+        print("预测试数据库初始化（schema + 种子）...")
+        if not run_setup(SETUP_MODULES):
+            print("数据库初始化失败，中止测试。")
+            return 1
+        print("数据库就绪。\n")
     print(f"共 {len(names)} 个测试脚本，逐个运行（每脚本超时 {args.timeout}s）...\n")
 
     results: list[dict] = []

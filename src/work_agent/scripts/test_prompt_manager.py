@@ -31,7 +31,7 @@ def test():
 
     assert result["name"] == "intent_router", result
 
-    assert result["version"] == "1.0", result
+    assert result["version"] == "1.1", result
 
     assert "{message}" in result["content"], "内容应含 message 占位符"
 

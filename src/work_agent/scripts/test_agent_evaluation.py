@@ -26,7 +26,7 @@ def test():
     # 场景1：评测数据加载
     # ======================
 
-    assert dataset.total == 50, f"应 50 条: {dataset.total}"
+    assert dataset.total == 55, f"应 55 条: {dataset.total}"
 
     categories = dataset.categories()
 
