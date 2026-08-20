@@ -1,0 +1,110 @@
+# Work Agent CI/CD 流水线（方案A：服务器本地构建，无镜像仓库）
+#
+# 触发：任意分支 push / PR → 只跑 test（门禁）；master push → test → deploy
+# 部署：GitHub Actions SSH 登录服务器 → 执行 deploy/scripts/deploy.sh master
+#      （服务器 git pull → docker build backend → up -d → 幂等迁移 → 前端 → nginx）
+#
+# 需要的仓库 Secrets（Settings → Secrets and variables → Actions）：
+#   DEPLOY_HOST      服务器 IP/域名
+#   DEPLOY_USER      服务器 SSH 用户，如 ubuntu
+#   DEPLOY_SSH_KEY   部署用 SSH 私钥（公钥已加入服务器 authorized_keys）
+#   LLM_API_KEY      DeepSeek API key（CI 测试真实 LLM 用例用）
+
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # CI 测试环境变量（非敏感默认值，与开发 docker-compose 凭据一致）
+  DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/work_agent
+  MILVUS_URI: http://localhost:19530
+  MINIO_ENDPOINT: localhost:9002
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin
+  MINIO_BUCKET: work-documents
+  MODEL_NAME: deepseek-chat
+  MODEL_BASE_URL: https://api.deepseek.com/v1
+  MODEL_TEMPERATURE: 0.2
+  EMAIL_ENABLED: "false"
+  TASK_REMINDER_ENABLED: "false"
+
+jobs:
+  test:
+    name: 全量测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 启动测试基础设施（PostgreSQL / Milvus / MinIO）
+        run: docker compose up -d
+
+      - name: 等待依赖就绪
+        run: |
+          for i in $(seq 1 60); do
+            pg_ok=$(docker exec work-postgres pg_isready -U postgres -d work_agent >/dev/null 2>&1 && echo 1 || echo 0)
+            milvus_ok=$(curl -sf http://localhost:9091/healthz >/dev/null 2>&1 && echo 1 || echo 0)
+            minio_ok=$(curl -sf http://localhost:9002/minio/health/live >/dev/null 2>&1 && echo 1 || echo 0)
+            if [ "$pg_ok" = 1 ] && [ "$milvus_ok" = 1 ] && [ "$minio_ok" = 1 ]; then
+              echo "✅ 基础设施就绪"
+              exit 0
+            fi
+            echo "等待依赖... ($i/60)"
+            sleep 5
+          done
+          echo "❌ 基础设施 5 分钟内未就绪"
+          exit 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 缓存 pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.prod.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: 安装依赖（含 torch-cpu）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.prod.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: 注入 LLM 测试 key
+        run: echo "DOUBAO_API_KEY=${{ secrets.LLM_API_KEY }}" >> "$GITHUB_ENV"
+
+      - name: 运行全量测试
+        run: python -m work_agent.scripts.run_all_tests --report-dir ci-reports
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-reports
+          path: ci-reports/
+
+  deploy:
+    name: SSH 部署到腾讯云服务器
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH 登录服务器执行部署（git pull → build → up → 迁移 → 前端 → nginx）
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/work-agent || exit 1
+            bash deploy/scripts/deploy.sh master

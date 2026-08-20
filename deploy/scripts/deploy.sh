@@ -2,8 +2,10 @@
 # ==========================================
 # P6-1 生产部署（幂等，可重复执行）
 #   预检 → git pull → 前端构建 → 拷贝 dist
-#   → compose 构建/启动后端 → Nginx reload
+#   → compose 构建/启动后端 → 等就绪 → 幂等迁移
+#   → 记录版本 → Nginx reload
 # 需在服务器仓库根执行；.env 位于仓库根
+# CI/CD（.github/workflows/ci.yml deploy job）也调用本脚本
 # ==========================================
 set -euo pipefail
 
@@ -13,7 +15,7 @@ cd "$REPO_ROOT"
 SUDO=""
 [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 
-BRANCH="${1:-main}"
+BRANCH="${1:-master}"
 
 echo "===== 0. 预检 ====="
 bash deploy/scripts/preflight.sh
@@ -48,11 +50,39 @@ docker compose -f deploy/docker-compose.prod.yml --env-file .env build backend
 docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
 
 echo ""
-echo "===== 5. 记录当前部署版本 ====="
+echo "===== 5. 等待 backend 就绪 ====="
+for i in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    echo "✓ backend healthy（${i} 次尝试）"
+    break
+  fi
+  [ "$i" -eq 30 ] && { echo "✗ backend 60s 内未就绪，查 docker logs work-agent-backend"; exit 1; }
+  sleep 2
+done
+
+echo ""
+echo "===== 5.5 幂等迁移 + 种子（每次部署安全重跑；不含测试数据）====="
+COMPOSE_P="docker compose -f deploy/docker-compose.prod.yml --env-file .env"
+run_migration() {
+  echo "  >> $1"
+  $COMPOSE_P exec -T backend python -m "work_agent.scripts.$1"
+}
+run_migration init_db
+run_migration seed_admin
+run_migration migrate_agent_logs
+run_migration migrate_agent_intelligence
+run_migration migrate_user_profile
+run_migration migrate_tasks
+run_migration migrate_conversation_messages
+run_migration migrate_indexes
+run_migration seed_rbac
+
+echo ""
+echo "===== 6. 记录当前部署版本 ====="
 git rev-parse HEAD > deploy/.last_deploy
 
 echo ""
-echo "===== 6. 更新 Nginx ====="
+echo "===== 7. 更新 Nginx ====="
 if [ -d /etc/nginx/conf.d ]; then
   $SUDO cp deploy/nginx/wkcp.online.conf /etc/nginx/conf.d/
   $SUDO cp deploy/nginx/api.wkcp.online.conf /etc/nginx/conf.d/

@@ -29,6 +29,7 @@ __pycache__/
 logs/
 data/
 reports/
+ci-reports/
 *.log
 docker/etcd/
 docker/milvus/
