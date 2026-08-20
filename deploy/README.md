@@ -12,9 +12,9 @@ Internet → Nginx(宿主机, Certbot TLS)
 
 ---
 
-## ⚠️ 部署前必读（阻塞项）
+## ⚠️ 部署前必读
 
-**Milvus 连接地址接线**：`rag/milvus_store.py` 目前硬编码 `uri="http://localhost:19530"`，容器内无法连到 Milvus。生产部署**必须先**将该处改为读取 `settings.milvus_uri`（配置字段已加，`MILVUS_URI=http://milvus-standalone:19530`）。此为唯一必要的业务接线改动（不改 RAG 逻辑），需在部署前完成并获确认。
+`rag/milvus_store.py` 已读取 `settings.milvus_uri`（生产 `.env` 配 `MILVUS_URI=http://milvus-standalone:19530`，容器内可达 Milvus）。此接线已完成，无需改动。
 
 ---
 
@@ -208,3 +208,41 @@ docker logs -f work-agent-backend
   - `PUT /api/admin/users/{id}/wechat` body `{"wechat_user_id": "zhangsan"}`
   - `DELETE /api/admin/users/{id}/wechat` 解绑
 - 未绑定员工提问 → 收到「请联系管理员绑定」提示；`WECHAT_AUTO_CREATE_USER=true` 时首次消息自动建号（需配置 `WECHAT_DEFAULT_TENANT_ID`）
+
+---
+
+## 八、CI/CD 自动化部署（GitHub Actions）
+
+> 触发链路：`commit → push master → Actions: 全量测试 → SSH 服务器 → git pull → docker build backend → 启新容器 → 幂等迁移 → 重建前端 → 上线`。PR 只跑测试（门禁），master push 才部署。**无镜像仓库，服务器本地构建（方案A）。**
+
+### 1. 工作流文件
+
+- `.github/workflows/ci.yml` —— 2 个 job：`test`（全量测试，全分支+PR）/ `deploy`（SSH，仅 master）
+- 测试 runner：`python -m work_agent.scripts.run_all_tests`（逐个跑 45 个脚本式测试，汇总 `ci-reports/ci_test_results.json`）
+- 部署脚本：`deploy/scripts/deploy.sh master`（服务器：git pull → docker build backend → up -d → 9 项幂等迁移 → 前端 npm build → nginx reload → 记录回滚点）
+
+### 2. 首次启用需配置（用户操作，敏感值不进仓库）
+
+**a. 服务器 SSH**
+- 生成一对专用部署密钥，公钥加入服务器 `~/.ssh/authorized_keys`，私钥完整内容存为 GitHub Secret `DEPLOY_SSH_KEY`
+- 建议服务器安全组对 GitHub Actions 出口 IP 段放行 22 端口
+
+**b. GitHub 仓库 Secrets（`Y2200/workagent` → Settings → Secrets and variables → Actions）**
+
+| Secret | 值 |
+|--------|-----|
+| `DEPLOY_HOST` | 服务器 IP/域名 |
+| `DEPLOY_USER` | 服务器 SSH 用户，如 `ubuntu` |
+| `DEPLOY_SSH_KEY` | 部署用 SSH 私钥（完整 `-----BEGIN ... PRIVATE KEY-----` 块） |
+| `LLM_API_KEY` | DeepSeek API key（CI 测试真实 LLM 用例） |
+
+服务器 `.env` **无需任何额外变量**（方案A：compose 在服务器本地构建，不引用镜像名）。
+
+### 3. 日常
+
+- **发版**：push 到 `master`，观察 Actions 两个 job 依次通过；失败在该 job 标红。
+- **回滚**：`bash deploy/scripts/rollback.sh`（回 `deploy/.last_deploy` 记录的 commit，服务器本地重建）。
+- **手动触发部署**：Actions → CI/CD → Run workflow（`workflow_dispatch`）。
+- **迁移自动执行**：`deploy.sh` 每次部署自动跑全部幂等迁移/种子（init_db/seed_admin/各 migrate_*/seed_rbac），不再需要手工 `seed_rbac`。
+
+> ⚠️ 测试会消耗真实 DeepSeek token 并有速率限制；`test` job 失败会阻断部署（设计如此）。如需跳过 LLM 用例可另行调整。
