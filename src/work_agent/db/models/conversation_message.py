@@ -40,9 +40,10 @@ class ConversationMessage(Base):
     )
 
     # 稳定 per-user 会话键（conversations.id，runtime 注入）
+    # 注：索引已在 __table_args__ 显式声明，这里不再 index=True，
+    # 避免 create_all 对同一索引名重复创建 → DuplicateTable
     conversation_id: Mapped[int] = mapped_column(
-        BigInteger,
-        index=True
+        BigInteger
     )
 
     # user / assistant / tool / system
