@@ -655,3 +655,22 @@ Phase：轻量 State + RAG 会话记忆（6-3.txt 调整版）
 3. (creator_id, status) 复合唯一约束不允许同一创建者多条同类历史，需 partial index
 验证：test_rag_memory Part A-D + 回归全绿 + 生产套件 6/6+契约
 ====================
+
+====================
+时间：2026-08-21
+Phase：CI/CD 流水线（GitHub Actions，方案A 服务器本地构建）
+文件：.github/workflows/ci.yml + scripts/run_all_tests.py + db/models/conversation_message.py + scripts/test_prompt_manager.py + scripts/test_agent_evaluation.py
+问题：CI 全新空库，45 个脚本式测试 39 失败
+现象1：37 个测试 `UndefinedTable: relation "tenants/users/documents/..." does not exist`——CI postgres 是全新空库，测试均假设本地既有 schema/种子
+现象2：`init_db`（create_all）自身报 `DuplicateTable: relation "ix_conversation_messages_conversation_id" already exists`
+原因分析：
+- 测试从未自建 schema，依赖本地多年演进后的开发库；CI 空库没建表
+- conversation_message.py 同一索引声明两次：`conversation_id` 列 `index=True`（自动 ix_conversation_messages_conversation_id）+ `__table_args__` 显式同名 Index → create_all 对全新库重复 CREATE INDEX → DuplicateTable（本地因该表由 migrate 脚本 IF NOT EXISTS 创建、从未走 create_all 而未暴露）
+修复：
+- run_all_tests.py 新增预测试初始化（init_db/seed_admin/seed_tenants/seed_rbac/seed_knowledge_library/各 migrate_*，均幂等），CI 空库与本地库都确保 schema+种子就绪；--no-setup 可跳过
+- conversation_message.py：conversation_id 列去掉 `index=True`，保留 __table_args__ 显式 Index（与 migrate DDL 同名一致）
+- test_prompt_manager.py 版本断言 1.0→1.1（Phase 7A 升级 intent_router prompt 后断言过时）
+- test_agent_evaluation.py 条数断言 50→55（Phase 12 评测集扩 5 条后断言过时）
+经验：CI 环境必须是"可复现的全新环境"，测试 runner 要先确保 schema+种子再跑；create_all 对全新库会把模型里重复声明的索引暴露出来
+验证：CI test job 由 6/45 恢复，等待全绿
+====================
