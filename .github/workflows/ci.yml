@@ -36,6 +36,10 @@ env:
   MODEL_TEMPERATURE: 0.2
   EMAIL_ENABLED: "false"
   TASK_REMINDER_ENABLED: "false"
+  # 认证相关：CI 测试用非空值（生产 .env 才有真实密钥；空 jwt_secret 会使 HS256 建 token 失败）
+  JWT_SECRET: ci-test-jwt-secret-change-me
+  ADMIN_USERNAME: admin
+  ADMIN_PASSWORD: ci-test-admin-pass
 
 jobs:
   test:

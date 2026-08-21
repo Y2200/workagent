@@ -401,7 +401,25 @@ def test_c_notification_tool():
 
         # send_email：SMTP 未启用 → email_disabled（明确提示，不走失败流程）
         # 用有 email 的用户（统计创建者）+ SUPER_ADMIN（无部门限制）
+        # 统计创建者 由 test_task_stats 创建；本测试字母序在其前，find-or-create 保证自足
         email_user = _db_user("统计创建者")
+        if email_user is None:
+            from work_agent.db.session import SessionLocal
+            from work_agent.repositories.user_repository import UserRepository
+            from work_agent.services.auth_service import AuthService
+            _db = SessionLocal()
+            try:
+                email_user = UserRepository().create(
+                    _db,
+                    username="统计创建者",
+                    password_hash=AuthService.hash_password("test123"),
+                    department="研发部",
+                    role="管理员",
+                    email="creator@test.com",
+                    tenant_id="1",
+                )
+            finally:
+                _db.close()
         ctx_admin = _ctx(
             permissions={"task:view", "task:notify"},
             role_codes={"SUPER_ADMIN"},

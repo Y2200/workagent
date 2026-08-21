@@ -674,3 +674,18 @@ Phase：CI/CD 流水线（GitHub Actions，方案A 服务器本地构建）
 经验：CI 环境必须是"可复现的全新环境"，测试 runner 要先确保 schema+种子再跑；create_all 对全新库会把模型里重复声明的索引暴露出来
 验证：CI test job 由 6/45 恢复，等待全绿
 ====================
+
+====================
+时间：2026-08-21
+Phase：CI/CD 第二轮适配（21/45 → 目标全绿）
+文件：.github/workflows/ci.yml + scripts/test_prompt_manager.py + test_audit_intelligence.py + test_agent_evaluation.py + test_enterprise_agent.py + knowledge/财务报销制度.md
+问题：CI 建表种子后仍 24 失败
+现象/原因：
+1. 14 个 `jwt.exceptions.InvalidKeyError: HMAC key must not be empty`——CI 未设 JWT_SECRET（生产在 .env，空默认值被 HS256 拒绝）→ workflow env 补非空 JWT_SECRET/ADMIN_USERNAME/ADMIN_PASSWORD
+2. test_prompt_manager/test_audit_intelligence 版本断言 1.0→1.1（intent_router prompt 已升级）；test_agent_evaluation 分布断言更新为 intent12/security12/tool11/agent10/regression10
+3. test_enterprise_agent 依赖 test_task_stats 建的"统计创建者"用户（字母序在其前，CI 不存在）→ find-or-create 自足
+4. **seed 数据权限矛盾**：knowledge/财务报销制度.md frontmatter `roles` 含通用"员工"，PermissionFilter 角色兜底 → 研发员工（role=员工）也能看到本应"仅财务部/财务人员可见"的制度，导致 test_permission/test_permission_management/test_audit 场景3 失败。测试注释明确"不含通用员工角色"，seed 数据违反设计意图 → roles 去掉"员工"
+修复：如上
+经验：PermissionFilter 是 部门 or 角色 任一命中即放行；seed 文档的 access frontmatter 必须与测试/设计意图严格一致，否则全新环境导入即暴露矛盾（本地历史数据掩盖了它）
+验证：待 CI 全绿
+====================

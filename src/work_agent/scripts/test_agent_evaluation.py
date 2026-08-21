@@ -30,10 +30,14 @@ def test():
 
     categories = dataset.categories()
 
-    assert all(
-        categories[cat] == 10
-        for cat in ("intent", "tool", "agent", "security", "regression")
-    ), categories
+    # Phase 12 扩展后分布：intent 12 / security 12 / tool 11 / agent 10 / regression 10
+    assert categories == {
+        "intent": 12,
+        "tool": 11,
+        "agent": 10,
+        "security": 12,
+        "regression": 10,
+    }, categories
 
     print(
         f"场景1 ✅ 数据加载: {dataset.total} 条, "

@@ -80,7 +80,7 @@ def test():
 
     version = manager.get_version("intent_router")
 
-    assert version == "1.0", version
+    assert version == "1.1", version
 
     print(f"场景4a ✅ 版本读取正常: {version}")
 

@@ -59,7 +59,7 @@ def test():
         assert log.model_name, log.model_name
 
         # 场景2：prompt_version
-        assert log.prompt_version == "1.0", log.prompt_version
+        assert log.prompt_version == "1.1", log.prompt_version
 
         # 场景3：intent_confidence
         assert 0.0 <= log.intent_confidence <= 1.0, log.intent_confidence
