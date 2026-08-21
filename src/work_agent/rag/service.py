@@ -128,9 +128,12 @@ class RAGService:
         )
 
 
+        # denied：存在候选且部分被权限过滤（含"全部被过滤"）。
+        # 与文档注释"存在候选但被权限过滤 → True"一致；旧实现 len(results)==0
+        # 仅识别"全部被过滤"，漏掉"部分内容被拒"（如查询命中受限文档+公开文档）。
         denied = (
             len(candidates) > 0
-            and len(results) == 0
+            and len(results) < len(candidates)
         )
 
         return {
