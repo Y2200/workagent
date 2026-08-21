@@ -37,9 +37,12 @@ env:
   EMAIL_ENABLED: "false"
   TASK_REMINDER_ENABLED: "false"
   # 认证相关：CI 测试用非空值（生产 .env 才有真实密钥；空 jwt_secret 会使 HS256 建 token 失败）
+  # ADMIN_PASSWORD=admin123 与 seed_admin + 各测试硬编码登录（admin/admin123）一致
   JWT_SECRET: ci-test-jwt-secret-change-me
   ADMIN_USERNAME: admin
-  ADMIN_PASSWORD: ci-test-admin-pass
+  ADMIN_PASSWORD: admin123
+  # seed 知识文档归企业A租户（本地 .env 同样配置），避免空租户全局可见破坏租户隔离测试
+  TENANT_ID: "1"
 
 jobs:
   test:

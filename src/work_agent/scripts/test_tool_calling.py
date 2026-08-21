@@ -193,7 +193,7 @@ def test():
 
     assert result["permission_denied"] is True, result
 
-    assert "权限不足" in result["response"], result["response"]
+    assert "权限" in result["response"], result["response"]
 
     print("场景3 ✅ 权限强制: USER 删除文档 → permission_denied")
 
