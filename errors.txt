@@ -689,3 +689,23 @@ Phase：CI/CD 第二轮适配（21/45 → 目标全绿）
 经验：PermissionFilter 是 部门 or 角色 任一命中即放行；seed 文档的 access frontmatter 必须与测试/设计意图严格一致，否则全新环境导入即暴露矛盾（本地历史数据掩盖了它）
 验证：待 CI 全绿
 ====================
+
+====================
+时间：2026-08-21
+Phase：CI/CD 第三轮收尾（43/45 → 目标 45/45）
+文件：scripts/seed_admin.py
+问题：test_operation_audit / test_audit_intelligence 失败
+现象：
+- test_operation_audit：断言默认管理员 operations 含 auth.login_failed，实际只有 auth.login
+- test_audit_intelligence：断言 /api/admin/logs 能查到刚创建的 agent 日志，实际查不到
+原因：CI 设 TENANT_ID=1 后，seed_admin 用 settings.tenant_id 给 admin 赋租户 "1"；
+而 login_failed 记在默认租户""（api/admin.py login 失败分支 tenant_id=""），员工A 的
+agent 日志也是租户""（seed_tenants "员工A" 单租户""）。admin 以租户"1"查 operations/logs
+（精确 tenant_id 匹配）→ 看不到租户"" 的记录。本地 .env TENANT_ID 为空 → admin 租户""
+→ 测试通过，CI 被 TENANT_ID=1 破坏
+修复：seed_admin 创建 admin 固定 tenant_id=""（平台级管理员，可见默认租户审计），
+不再用 settings.tenant_id；保留 TENANT_ID=1（seed 文档归租户A，供 test_permission 场景3 租户隔离）
+经验：TENANT_ID 会同时影响 seed_admin(admin 租户) 与 seed_knowledge_library(文档租户)，
+改动一个配置可能破坏看似无关的"默认租户可见"测试；平台级管理员租户应固定""
+验证：待 CI 全绿
+====================
