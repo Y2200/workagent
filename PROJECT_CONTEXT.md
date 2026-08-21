@@ -6,9 +6,11 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-21，GitHub Actions CI/CD 45/45 冲刺中）
+# ⚡ 当前状态（2026-08-21，GitHub Actions CI/CD 全自动上线 ✅）
 
-**代码状态**：本地 `master` = `63a5ae0`，工作区干净（仅 AGENTS.md 未跟踪未定论），全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态**：本地 `master` = `e127062`，工作区干净（仅 AGENTS.md 未跟踪未定论），全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+
+**✅ CI/CD 流水线已全自动跑通**：45/45 测试全绿 + SSH 部署 job 成功（deploy.sh master：git pull → docker build → 幂等迁移 → 前端 → nginx → healthcheck）。之后每次 push master 即自动测试+上线。
 
 ## 最新（2026-08-20→21）：GitHub Actions CI/CD 流水线（方案A：服务器本地构建，无镜像仓库）
 
@@ -19,8 +21,8 @@
 - **GitHub Secrets（4 个，用户已配）**：`DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_SSH_KEY`/`LLM_API_KEY`（详见 deploy/README.md 第八节）
 - **本地 git 环境**：SSH remote 切回 HTTPS→已改回 SSH（个人密钥 `~/.ssh/id_ed25519_github` 注册 GitHub，`~/.ssh/config` 指向它；部署密钥 `id_ed25519`(github-actions) 仅用于服务器，两者分离）
 - **修复的 CI 适配问题**（逐条详见 errors.txt 2026-08-21 四条记录）：空库 UndefinedTable→runner 预建 schema；conversation_message 模型重复索引→移除列级 index=True；JWT 空 key→CI env 补 JWT_SECRET；prompt 版本 1.0→1.1 与评测分布断言过时；`search_with_meta` denied 语义 `len(results)==0`→`<len(candidates)`（对齐 docstring）；seed 文档 roles 去通用"员工"（财务报销/采购审批，部门隔离）；seed_admin 平台管理员固定租户 `""`（避免 TENANT_ID 破坏默认租户可见审计）
-- **测试进度**：6/45 → 21/45 → 38/45 → 43/45 → 最后 2 个（test_operation_audit/test_audit_intelligence，seed_admin 租户问题）已修，**等待 45/45 全绿确认**
-- **验证**：若 test 全绿 → deploy job SSH 上服务器执行 `deploy.sh master`（git pull → docker build → 幂等迁移 → 前端 → nginx）→ 生产自动上线
+- **测试进度**：6/45 → 21/45 → 38/45 → 43/45 → **45/45 全绿**（最终修复：seed_admin 平台管理员固定租户""，避免 TENANT_ID=1 破坏默认租户可见审计）
+- **验证**：test 全绿 → deploy job SSH 上服务器执行 `deploy.sh master` → **部署成功**，生产已自动更新
 
 ## 最新（2026-08-16→17）：企业任务型 Agent 升级（6-4.txt 路线 Phase 7A-12）
 - **核心原则**：不是通用聊天 Agent，而是**企业任务执行 Agent**（Manager/Employee/System 三角色）
@@ -120,10 +122,9 @@
 - 测试：`scripts/test_task_stats.py` 6 部分；回归 test_task_agent 11/11、test_user_management 8/8、生产套件 6/6+契约、前端 build
 
 ## 下一步
-1. **CI/CD 全绿确认**：等待最新 push（`63a5ae0`）的 Actions `test` job 45/45 通过
-2. **若 test 全绿** → `deploy` job 自动 SSH 上服务器跑 `deploy.sh master`（git pull → docker build → 幂等迁移 → 前端 → nginx）→ 验证生产：`curl https://api.wkcp.online/health`、三角色权限（员工"给张三安排任务"→拒绝；经理→确认流；"我能不能申请远程办公"→结合角色回答；定时任务→System Agent 扫描）
-3. **若 test 仍红** → 看 `ci-reports` 失败日志继续修（当前剩 test_operation_audit/test_audit_intelligence，seed_admin 租户修复已提交）
-4. 后续（未做）：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地、`AGENTS.md`（Codex 过期副本）同步/删除定论
+1. **生产验证**：`curl https://api.wkcp.online/health` 已由 deploy.sh healthcheck 覆盖；建议按 deploy/README 第八节验证三角色权限（员工"给张三安排任务"→拒绝；经理→确认流；"我能不能申请远程办公"→结合角色回答；定时任务→System Agent 扫描）
+2. **后续（未做）**：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地、`AGENTS.md`（Codex 过期副本）同步/删除定论
+3. **运维提醒**：CI 测试会消耗真实 DeepSeek token（LLM 用例）+ GitHub Actions 分钟数；`JWT_SECRET` 等测试凭据仅为 CI 占位，生产仍用服务器 .env 真实值
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
 
