@@ -90,6 +90,16 @@ jobs:
       - name: 注入 LLM 测试 key
         run: echo "DOUBAO_API_KEY=${{ secrets.LLM_API_KEY }}" >> "$GITHUB_ENV"
 
+      - name: 校验 LLM key 已注入（缺 key 快速失败，避免 33 个测试 import 全崩的模糊报错）
+        run: |
+          if [ -z "$DOUBAO_API_KEY" ]; then
+            echo "❌ LLM_API_KEY Secret 未配置或为空"
+            echo "   请到 Settings → Secrets and variables → Actions 添加 LLM_API_KEY（DeepSeek key）"
+            echo "   否则所有依赖 LLM 的测试在 import 阶段即失败"
+            exit 1
+          fi
+          echo "✓ DOUBAO_API_KEY 已注入"
+
       - name: 运行全量测试
         run: python -m work_agent.scripts.run_all_tests --report-dir ci-reports
 
