@@ -12,10 +12,9 @@ Audit Logger 审计测试
 
 import time
 
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
+from work_agent.config import settings
 from work_agent.core.container import audit_service, document_service
 from work_agent.db.models import AgentLog
 from work_agent.db.session import SessionLocal
@@ -24,6 +23,8 @@ from work_agent.repositories.agent_log_repository import AgentLogRepository
 from work_agent.repositories.document_repository import DocumentRepository
 from work_agent.repositories.tenant_repository import TenantRepository
 from work_agent.repositories.user_repository import UserRepository
+from work_agent.scripts.seed_admin import seed_admin
+from work_agent.scripts.seed_rbac import seed_rbac
 from work_agent.scripts.seed_tenants import seed_tenants
 from work_agent.wechat.service import process_message
 
@@ -128,18 +129,13 @@ def _setup_documents() -> list[int]:
 
     tenant_b_id = _tenant_id_by_corp("ww_corp_B")
 
-    finance_file = Path(
-        "knowledge/财务报销制度.md"
-    )
-
-    project_file = Path(
-        "knowledge/项目延期管理制度.md"
-    )
-
     # 企业A财务报销制度：仅财务部/财务人员可见
     doc_a = document_service.upload(
-        filename=finance_file.name,
-        data=finance_file.read_bytes(),
+        filename="财务报销制度.md",
+        data=(
+            "财务报销制度：差旅报销需提交发票，"
+            "超标需审批。"
+        ).encode("utf-8"),
         category="财务管理",
         uploader="admin_A",
         tenant_id=tenant_a_id,
@@ -150,8 +146,11 @@ def _setup_documents() -> list[int]:
 
     # 企业B项目管理制度：公开
     doc_b = document_service.upload(
-        filename=project_file.name,
-        data=project_file.read_bytes(),
+        filename="项目延期管理制度.md",
+        data=(
+            "项目延期管理制度：延期需提前报备，"
+            "超期需上报负责人。"
+        ).encode("utf-8"),
         category="项目管理",
         uploader="admin_B",
         tenant_id=tenant_b_id,
@@ -348,6 +347,72 @@ def test():
     print(
         f"场景4 ✅ 异常 → failed (error_type={failed_log.error_type}, "
         f"error={failed_log.error_message[:30]})"
+    )
+
+    # ======================
+    # 场景5：平台管理员（SUPER_ADMIN，tenant=""）应看到全部租户日志
+    # ======================
+
+    seed_admin()
+
+    seed_rbac()
+
+    # 服务层：tenant_id=None → 平台全量（跨租户）
+    page_all = audit_service.list_logs(
+        tenant_id=None,
+        page_size=50,
+    )
+
+    all_tenant_ids = {
+        item.tenant_id
+        for item in page_all["items"]
+    }
+
+    assert tenant_a_id in all_tenant_ids, "场景5失败: 平台全量未包含企业A日志"
+
+    assert tenant_b_id in all_tenant_ids, "场景5失败: 平台全量未包含企业B日志"
+
+    print(
+        f"场景5a ✅ 服务层平台全量: 可见租户 {sorted(all_tenant_ids)}"
+    )
+
+    # HTTP 层：admin（SUPER_ADMIN）登录 /logs 应看到跨租户日志
+    resp = client.post(
+        "/api/admin/auth/login",
+        json={
+            "username": "admin",
+            "password": settings.admin_password,
+        }
+    )
+
+    assert resp.status_code == 200, resp.text
+
+    headers_super = {
+        "Authorization": f"Bearer {resp.json()['access_token']}"
+    }
+
+    resp = client.get(
+        "/api/admin/logs",
+        headers=headers_super,
+    )
+
+    assert resp.status_code == 200, resp.text
+
+    logs_super = resp.json()["items"]
+
+    assert len(logs_super) > 0, "场景5b失败: admin 应看到日志"
+
+    super_tenant_ids = {
+        log["tenant_id"]
+        for log in logs_super
+    }
+
+    assert tenant_a_id in super_tenant_ids, "场景5b失败: admin 未看到企业A日志"
+
+    assert tenant_b_id in super_tenant_ids, "场景5b失败: admin 未看到企业B日志"
+
+    print(
+        f"场景5b ✅ HTTP层平台全量: admin 可见租户 {sorted(super_tenant_ids)}"
     )
 
     # ======================
