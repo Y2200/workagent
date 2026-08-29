@@ -151,10 +151,12 @@ class AgentLogRepository:
         默认排除已归档日志
         """
 
-        query = (
-            db.query(AgentLog)
-            .filter(AgentLog.tenant_id == tenant_id)
-        )
+        query = db.query(AgentLog)
+
+        if tenant_id is not None:
+            query = query.filter(
+                AgentLog.tenant_id == tenant_id
+            )
 
         if not include_archived:
             query = query.filter(
@@ -192,10 +194,12 @@ class AgentLogRepository:
             include_archived: bool = False
     ) -> int:
 
-        query = (
-            db.query(func.count(AgentLog.id))
-            .filter(AgentLog.tenant_id == tenant_id)
-        )
+        query = db.query(func.count(AgentLog.id))
+
+        if tenant_id is not None:
+            query = query.filter(
+                AgentLog.tenant_id == tenant_id
+            )
 
         if not include_archived:
             query = query.filter(
@@ -229,13 +233,19 @@ class AgentLogRepository:
 
         now = datetime.now()
 
+        filters = [
+            AgentLog.archived_at.is_(None),
+            AgentLog.created_at < before,
+        ]
+
+        if tenant_id is not None:
+            filters.append(
+                AgentLog.tenant_id == tenant_id
+            )
+
         result = (
             db.query(AgentLog)
-            .filter(
-                AgentLog.tenant_id == tenant_id,
-                AgentLog.archived_at.is_(None),
-                AgentLog.created_at < before,
-            )
+            .filter(*filters)
             .update(
                 {"archived_at": now},
                 synchronize_session=False,
@@ -258,10 +268,12 @@ class AgentLogRepository:
         审计统计（租户隔离）
         """
 
-        base = (
-            db.query(AgentLog)
-            .filter(AgentLog.tenant_id == tenant_id)
-        )
+        base = db.query(AgentLog)
+
+        if tenant_id is not None:
+            base = base.filter(
+                AgentLog.tenant_id == tenant_id
+            )
 
         total = (
             base
@@ -319,12 +331,15 @@ class AgentLogRepository:
         今日问答统计（租户隔离）
         """
 
-        base = (
-            db.query(AgentLog)
-            .filter(
-                AgentLog.tenant_id == tenant_id,
-                AgentLog.created_at >= today_start,
+        base = db.query(AgentLog)
+
+        if tenant_id is not None:
+            base = base.filter(
+                AgentLog.tenant_id == tenant_id
             )
+
+        base = base.filter(
+            AgentLog.created_at >= today_start
         )
 
         finished = [
@@ -400,27 +415,25 @@ class AgentLogRepository:
         安全统计：拒绝 / 失败（租户隔离）
         """
 
-        denied = (
-            db.query(AgentLog)
-            .filter(
-                AgentLog.tenant_id == tenant_id,
-                AgentLog.status == "denied",
-            )
-            .count()
+        denied = db.query(AgentLog).filter(
+            AgentLog.status == "denied"
         )
 
-        failed = (
-            db.query(AgentLog)
-            .filter(
-                AgentLog.tenant_id == tenant_id,
-                AgentLog.status == "failed",
-            )
-            .count()
+        failed = db.query(AgentLog).filter(
+            AgentLog.status == "failed"
         )
+
+        if tenant_id is not None:
+            denied = denied.filter(
+                AgentLog.tenant_id == tenant_id
+            )
+            failed = failed.filter(
+                AgentLog.tenant_id == tenant_id
+            )
 
         return {
-            "denied_count": denied,
-            "failed_count": failed,
+            "denied_count": denied.count(),
+            "failed_count": failed.count(),
         }
 
 

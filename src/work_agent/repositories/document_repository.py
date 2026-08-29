@@ -177,12 +177,18 @@ class DocumentRepository:
         按状态统计文档数（租户隔离）
         """
 
-        rows = (
-            db.query(
-                Document.status,
-                func.count(Document.id)
+        query = db.query(
+            Document.status,
+            func.count(Document.id)
+        )
+
+        if tenant_id is not None:
+            query = query.filter(
+                Document.tenant_id == tenant_id
             )
-            .filter(Document.tenant_id == tenant_id)
+
+        rows = (
+            query
             .group_by(Document.status)
             .all()
         )

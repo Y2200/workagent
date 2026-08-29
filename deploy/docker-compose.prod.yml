@@ -1,5 +1,7 @@
 # ==========================================
-# P6-1 生产编排（腾讯云 Ubuntu）
+# P6-1 生产编排（腾讯云 Ubuntu / 阿里云香港 ECS 2C4G 均适用）
+#
+# 4G 小内存适配：各容器 mem_limit 上限 + Milvus cache/GOMEMLIMIT 收缩 + PG 调参 + torch 单线程
 #
 # 安全要点：
 #   - 全部服务在独立 internal 网络；仅 backend 经 127.0.0.1:8000 发布给宿主机 Nginx
@@ -46,6 +48,8 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 512m
+    command: postgres -c shared_buffers=256MB -c effective_cache_size=512MB -c maintenance_work_mem=64MB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
@@ -67,6 +71,7 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 256m
     environment:
       ETCD_AUTO_COMPACTION_MODE: revision
       ETCD_AUTO_COMPACTION_RETENTION: 1000
@@ -90,6 +95,7 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 512m
     environment:
       # Milvus 内部对象存储凭据（强制注入，勿用默认）
       MINIO_ROOT_USER: ${MILVUS_MINIO_USER:?请在 .env 设置 MILVUS_MINIO_USER}
@@ -110,9 +116,13 @@ services:
     networks: [internal]
     logging: *default-logging
     command: ["milvus", "run", "standalone"]
+    mem_limit: 1536m
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
+      # 4G 小内存收缩：chunk 缓存上限 1GB + Go GC 软上限 1GiB，防 OOM
+      CACHE_MAX_MEMORY_USAGE_LIMIT: "1024"
+      GOMEMLIMIT: "1GiB"
       # v2.5.0 凭据环境变量名：MINIO_ACCESS_KEY_ID / MINIO_SECRET_ACCESS_KEY
       # （见镜像内 /milvus/configs/milvus.yaml；与 milvus-minio 的根用户/口令一致）
       MINIO_ACCESS_KEY_ID: ${MILVUS_MINIO_USER}
@@ -140,6 +150,7 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 512m
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?请在 .env 设置 MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?请在 .env 设置 MINIO_SECRET_KEY}
@@ -162,6 +173,7 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 128m
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
@@ -185,6 +197,11 @@ services:
     restart: unless-stopped
     networks: [internal]
     logging: *default-logging
+    mem_limit: 2g
+    environment:
+      # 2 核小机：限制 torch/BLAS 线程数，避免线程抖动吃满内存
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     env_file: ../.env
     ports:
       # 仅宿主机回环可达（Nginx 代理）；公网不可直连

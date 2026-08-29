@@ -35,6 +35,29 @@ router = APIRouter(
 )
 
 
+def _tenant_scope(
+        db: Session,
+        current_user: User
+) -> str | None:
+
+    """
+    平台管理员（SUPER_ADMIN）→ None（查看全部租户）
+    租户管理员 → 本租户隔离
+    """
+
+    if (
+        "SUPER_ADMIN"
+        in RBACService().get_role_codes(
+            db,
+            current_user.id,
+        )
+    ):
+
+        return None
+
+    return current_user.tenant_id
+
+
 SUPPORTED_UPLOAD_EXTENSIONS = {
     "pdf",
     "docx",
@@ -410,7 +433,8 @@ def list_logs(
         status: str | None = Query(None),
         start_time: datetime | None = Query(None),
         end_time: datetime | None = Query(None),
-        current_user: User = Depends(require_permission("audit:view"))
+        current_user: User = Depends(require_permission("audit:view")),
+        db: Session = Depends(get_db)
 ):
 
     """
@@ -420,7 +444,7 @@ def list_logs(
     """
 
     return audit_service.list_logs(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_tenant_scope(db, current_user),
         user_id=user_id,
         channel=channel,
         status=status,
@@ -442,7 +466,8 @@ def list_operations(
         user_id: int | None = Query(None),
         start_time: datetime | None = Query(None),
         end_time: datetime | None = Query(None),
-        current_user: User = Depends(require_permission("audit:view"))
+        current_user: User = Depends(require_permission("audit:view")),
+        db: Session = Depends(get_db)
 ):
 
     """
@@ -450,7 +475,7 @@ def list_operations(
     """
 
     return audit_service.list_operations(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_tenant_scope(db, current_user),
         action=action,
         user_id=user_id,
         start_time=start_time,
@@ -465,15 +490,16 @@ def list_operations(
     response_model=dict
 )
 def dashboard_stats(
-        current_user: User = Depends(require_permission("document:view"))
+        current_user: User = Depends(require_permission("document:view")),
+        db: Session = Depends(get_db)
 ):
 
     """
-    管理驾驶舱运营统计（按租户隔离）
+    管理驾驶舱运营统计（按租户隔离；SUPER_ADMIN 平台全量）
     """
 
     return dashboard_service.get_stats(
-        tenant_id=current_user.tenant_id
+        tenant_id=_tenant_scope(db, current_user)
     )
 
 
@@ -482,15 +508,16 @@ def dashboard_stats(
     response_model=dict
 )
 def audit_statistics(
-        current_user: User = Depends(require_permission("audit:view"))
+        current_user: User = Depends(require_permission("audit:view")),
+        db: Session = Depends(get_db)
 ):
 
     """
-    审计统计（租户隔离）
+    审计统计（租户隔离；SUPER_ADMIN 平台全量）
     """
 
     return audit_service.get_statistics(
-        tenant_id=current_user.tenant_id
+        tenant_id=_tenant_scope(db, current_user)
     )
 
 

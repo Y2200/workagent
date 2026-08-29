@@ -57,10 +57,12 @@ class OperationLogRepository:
             limit: int = 20
     ):
 
-        query = (
-            db.query(OperationLog)
-            .filter(OperationLog.tenant_id == tenant_id)
-        )
+        query = db.query(OperationLog)
+
+        if tenant_id is not None:
+            query = query.filter(
+                OperationLog.tenant_id == tenant_id
+            )
 
         if action:
             query = query.filter(
@@ -102,10 +104,12 @@ class OperationLogRepository:
             end_time: datetime | None = None
     ) -> int:
 
-        query = (
-            db.query(func.count(OperationLog.id))
-            .filter(OperationLog.tenant_id == tenant_id)
-        )
+        query = db.query(func.count(OperationLog.id))
+
+        if tenant_id is not None:
+            query = query.filter(
+                OperationLog.tenant_id == tenant_id
+            )
 
         if action:
             query = query.filter(
