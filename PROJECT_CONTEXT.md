@@ -23,6 +23,7 @@
 - **提示词**：intent_router v1.1→1.2（新增意图）；**部署后需 `POST /api/admin/prompts/seed` 重播种**，否则线上 LLM 意图路由不认「查看本部门员工」
 - **测试**：test_enterprise_agent 增 Part E3（多轮合并流）/E4（补充路由）/H（部门员工路由+Policy+姓名格式化），Part B 改（USER 拒 list_department）；test_prompt_manager/governance 硬编码版本号改动态（intent_router 基线 1.2）
 - **验证**：定向 8 套件全绿 + 全量回归 49/49
+- **CI 补丁**：push 后 CI 48/49（test_permission_management 场景3 user_ids 瞬态竞态，本地不可复现）→ 夹具改回真实长度 + `_search_allow` 有界重试（≤15s 吸收 Milvus 写入后读可见延迟）→ 5 连跑全绿，重推后 CI 验证（详见 errors.txt 2026-08-30 二条）
 
 ## 最新（2026-08-29）：生产迁移阿里云香港 + 审计可见性修复 + CI 加固
 - **生产迁移**：腾讯云 → 阿里云香港 ECS 2C4G（免费试用 3 个月），DNS 已切换，部署成功，企微端到端可用

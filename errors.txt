@@ -857,3 +857,21 @@ Phase：任务发布多轮补充修复 + 部门员工查看
   - 全量回归 49/49
 部署注意：intent_router v1.1→1.2，部署后需 POST /api/admin/prompts/seed 重播种
 ====================
+时间：2026-08-30
+Phase：CI 修复（push 079c9e0 后 test_permission_management 48/49 失败）
+问题：CI 场景3「指定用户授权」（PUT user_ids=[a_dev.id] 后 dev 检索仍 denied）失败；
+     本地连跑 3 次隔离 + 2 轮全量回归均绿。
+根因：
+  1. 本地元数据 dump 验证逻辑正确（场景3后 access={'departments':[],'roles':[],'user_ids':[4]}，
+     dev 检索 (1, False) 通过）。
+  2. CI 失败是 Milvus 权限更新（update_document_access: upsert+flush）后读取侧可见延迟的瞬态竞态；
+     本 commit 把 649 字夹具改成 20 字单句 → 单 chunk 单实体检索对可见性延迟更敏感，放大该竞态。
+  3. 顺带发现：集合 auto_id=True，权限更新 upsert 每次让实体 id 轮换（delete+reinsert），更添时序敏感。
+修复（纯测试层）：
+  - 夹具改回真实长度多段制度文本（~700 字，贴近原 649 字检索特征）
+  - _search_allow() 有界重试（≤15s）：Milvus 写入后读可见延迟期间重试，超时仍返回最终态（断言照常拦真 bug）
+验证：test_permission_management 连跑 5 次全绿（TENANT_ID=1 同 CI env）；逻辑层 dump 证实场景3 元数据正确
+经验：
+  - 测试夹具别改成过短单句：单 chunk 检索对 Milvus 读写一致性窗口更敏感
+  - Milvus 权限更新类测试，断言前加有界重试吸收 read-after-write 可见延迟是合理的（有界、不掩真 bug）
+====================
