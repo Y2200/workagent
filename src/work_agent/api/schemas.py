@@ -84,10 +84,10 @@ class CreateUserRequest(BaseModel):
     tenant_id: SUPER_ADMIN 可设任意或空；租户管理员仅本租户
     """
 
-    username: str
+    # 用户名可选：留空自动生成（员工走企微，无需 Web 登录名）
+    username: str = ""
 
-    password: str
-
+    # 单公司模型：员工不再设置密码（内部存随机哈希，不能 Web 密码登录）
     real_name: str = ""
 
     department: str = ""
@@ -96,6 +96,7 @@ class CreateUserRequest(BaseModel):
 
     role: str = "USER"
 
+    # 租户可选：留空默认公司租户（default_tenant_id）
     tenant_id: str = ""
 
     # 可选：创建即绑定企微 userid

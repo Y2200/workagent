@@ -12,6 +12,19 @@
 
 **✅ CI/CD 流水线已全自动跑通**：45/45 测试全绿 + SSH 部署 job 成功（deploy.sh master：git pull → docker build → 幂等迁移 → 前端 → nginx → healthcheck）。之后每次 push master 即自动测试+上线。
 
+## 最新（2026-08-31）：单公司用户模型（去密码 + 删除用户 + 默认公司租户1）
+- **痛点**：新企微绑定用户全落「平台」(空租户)，只有研发部管理员是租户1（根因 `wechat_default_tenant_id=""`）；Web 建员工强制用户名+密码繁琐；解绑后记录无法删除；超级管理员"跨公司"归属语义别扭
+- **改动**：
+  - 新增 `default_tenant_id="1"`（公司租户）；企微自动建号 `_auto_create_user` 用 `wechat_default_tenant_id or default_tenant_id`
+  - **Web 建用户去密码**：`CreateUserRequest` 删 `password`；内部存随机哈希（员工只能企微，不能 Web 密码登录）；username 留空自动生成（`wx_{wechat_user_id}` / `emp_{随机}`）；tenant 留空默认公司租户1
+  - **新增 DELETE /api/admin/users/{id}**：删自己 400 / 删最后超管 400 / 有任务 409 / 清 user_role + 会话；前端加删除按钮
+  - **超级管理员归租户1**（`seed_admin` 用 default_tenant_id；可见性不变——SUPER_ADMIN 角色 → `_tenant_scope` 全量）
+  - 前端：建用户表单去密码项、用户名可选、租户下拉默认1、删除按钮
+  - 迁移脚本 `scripts/migrate_company_users.py`（幂等）：存量空租户用户 → 公司租户1
+- **保留多租户能力**：不删 tenant_id 列/过滤/隔离逻辑；部门级文档访问控制（visibility + access + PermissionFilter）保持不变
+- **测试**：test_user_management 9/9（含新增 Part9 删除、自动用户名、默认租户1）；test_wecom/test_enterprise_agent 绿
+- **部署**：服务器跑 `python -m work_agent.scripts.migrate_company_users`
+
 ## 最新（2026-08-30）：任务发布多轮补充修复 + 部门员工查看
 - **生产痛点（经理发不出任务）**：经理企微发布任务一直被回「我需要补充：执行人；请补充后继续」，怎么发都触发不了
   - 根因1：执行人识别是死板正则（`services/task_service.py::_fallback_create_parse`），必须「给/安排/让 + 姓名 + 动词/任务」句式，「我要发布任务」「任务给张三」等抽不出姓名

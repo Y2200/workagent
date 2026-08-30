@@ -41,7 +41,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="tenant_id" label="租户" width="90">
-          <template #default="{ row }">{{ row.tenant_id || '平台' }}</template>
+          <template #default="{ row }">{{ row.tenant_id || '公司' }}</template>
         </el-table-column>
         <el-table-column label="企微绑定" width="140">
           <template #default="{ row }">
@@ -51,7 +51,7 @@
             <el-tag v-else type="info" size="small">未绑定</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230">
+        <el-table-column label="操作" width="280">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="openBind(row)">绑定/修改</el-button>
@@ -62,6 +62,13 @@
               @click="unbind(row)"
             >
               解绑
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              @click="removeUser(row)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -85,16 +92,8 @@
       width="460px"
     >
       <el-form label-width="96px">
-        <el-form-item label="用户名" required>
-          <el-input v-model="createForm.username" placeholder="唯一登录名/工号" />
-        </el-form-item>
-        <el-form-item label="密码" required>
-          <el-input
-            v-model="createForm.password"
-            type="password"
-            show-password
-            placeholder="至少 6 位"
-          />
+        <el-form-item label="用户名">
+          <el-input v-model="createForm.username" placeholder="留空自动生成" />
         </el-form-item>
         <el-form-item label="姓名">
           <el-input v-model="createForm.real_name" placeholder="显示名（可重复）" />
@@ -116,10 +115,12 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="isSuperAdmin" label="租户">
-          <el-input v-model="createForm.tenant_id" placeholder="留空 = 平台" />
+          <el-select v-model="createForm.tenant_id" style="width: 100%">
+            <el-option label="公司（租户1）" value="1" />
+          </el-select>
         </el-form-item>
         <el-form-item label="企微 UserID">
-          <el-input v-model="createForm.wechat_user_id" placeholder="可选，如 zhangsan" />
+          <el-input v-model="createForm.wechat_user_id" placeholder="可选，绑定后员工经企微使用" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -176,7 +177,7 @@
           />
         </el-form-item>
         <el-form-item label="租户">
-          <span>{{ form.tenant_id || '平台' }}</span>
+          <span>{{ form.tenant_id || '公司（租户1）' }}</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -189,7 +190,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const items = ref([])
@@ -211,12 +212,11 @@ const form = reactive({
 const createDialogVisible = ref(false)
 const createForm = reactive({
   username: '',
-  password: '',
   real_name: '',
   department: '',
   email: '',
   role: 'USER',
-  tenant_id: '',
+  tenant_id: '1',
   wechat_user_id: '',
 })
 
@@ -286,26 +286,17 @@ function reset() {
 function openCreate() {
   Object.assign(createForm, {
     username: '',
-    password: '',
     real_name: '',
     department: '',
     email: '',
     role: 'USER',
-    tenant_id: '',
+    tenant_id: '1',
     wechat_user_id: '',
   })
   createDialogVisible.value = true
 }
 
 async function saveCreate() {
-  if (!createForm.username) {
-    ElMessage.warning('用户名不能为空')
-    return
-  }
-  if (!createForm.password || createForm.password.length < 6) {
-    ElMessage.warning('密码至少 6 位')
-    return
-  }
   saving.value = true
   try {
     await api.post('/admin/users', { ...createForm })
@@ -377,6 +368,17 @@ async function unbind(row) {
   await api.delete(`/admin/users/${row.id}/wechat`)
   ElMessage.success('已解绑')
   row.wechat_user_id = null
+}
+
+async function removeUser(row) {
+  await ElMessageBox.confirm(
+    `确定删除用户「${row.real_name || row.username}」？删除后该用户记录移除，不可恢复。`,
+    '删除确认',
+    { type: 'warning' },
+  )
+  await api.delete(`/admin/users/${row.id}`)
+  ElMessage.success('已删除')
+  load(1)
 }
 
 onMounted(() => {

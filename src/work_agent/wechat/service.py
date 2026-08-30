@@ -74,7 +74,11 @@ def _auto_create_user(
                 role="员工",
                 real_name=name,
                 wechat_user_id=wechat_user_id,
-                tenant_id=settings.wechat_default_tenant_id,
+                # 单公司模型：默认落公司租户（未显式配置则用 default_tenant_id）
+                tenant_id=(
+                    settings.wechat_default_tenant_id
+                    or settings.default_tenant_id
+                ),
             )
 
         except IntegrityError:

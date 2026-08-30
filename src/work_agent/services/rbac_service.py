@@ -180,3 +180,18 @@ class RBACService:
         )
 
         return role
+
+    def remove_user_roles(
+            self,
+            db: Session,
+            user_id: int
+    ) -> None:
+
+        """
+        删除用户全部角色关联（删除用户前清理）
+        """
+
+        self.repository.remove_user_roles(
+            db,
+            user_id,
+        )

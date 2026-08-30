@@ -160,3 +160,46 @@ class ConversationRepository:
 
         # 转回时间正序
         return list(reversed(rows))
+
+    def delete_by_user(
+            self,
+            db: Session,
+            user_id: int
+    ) -> None:
+
+        """
+        删除用户的会话及消息（删除用户前清理）
+        """
+
+        conversation_ids = [
+            row[0]
+            for row in db.query(Conversation.id).filter(
+                Conversation.user_id == user_id,
+            ).all()
+        ]
+
+        if conversation_ids:
+
+            (
+                db.query(ConversationMessage)
+                .filter(
+                    ConversationMessage.conversation_id.in_(
+                        conversation_ids
+                    )
+                )
+                .delete(
+                    synchronize_session=False,
+                )
+            )
+
+        (
+            db.query(Conversation)
+            .filter(
+                Conversation.user_id == user_id,
+            )
+            .delete(
+                synchronize_session=False,
+            )
+        )
+
+        db.commit()

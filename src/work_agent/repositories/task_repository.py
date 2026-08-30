@@ -200,6 +200,22 @@ class TaskRepository:
             .count()
         )
 
+    def count_by_creator(
+            self,
+            db: Session,
+            creator_id: int
+    ) -> int:
+
+        """
+        该用户作为创建者的任务数（删除用户守卫用）
+        """
+
+        return (
+            db.query(Task)
+            .filter(Task.creator_id == creator_id)
+            .count()
+        )
+
     def update_progress(
             self,
             db: Session,

@@ -50,8 +50,11 @@ class Settings(BaseSettings):
     # 首次收到未绑定用户消息时是否自动建号（默认关；身份可信但租户归属需配置）
     wechat_auto_create_user: bool = False
 
-    # 自动建号用户归属租户
+    # 自动建号用户归属租户（空则回退 default_tenant_id）
     wechat_default_tenant_id: str = ""
+
+    # 默认公司租户（单公司模型：公司→部门→员工；多租户后续扩展）
+    default_tenant_id: str = "1"
 
     # ======================
     # 大模型
