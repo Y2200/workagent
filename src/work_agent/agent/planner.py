@@ -362,6 +362,23 @@ class AgentPlanner:
                 reasoning="任务汇总：生成部门任务总结",
             )
 
+        # 经理查看本部门员工（query_department_members，仅本部门）
+        if intent == IntentType.QUERY_DEPARTMENT_MEMBERS:
+
+            return PlanResult(
+                kind="task",
+                intent=intent,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        tool="user_tool",
+                        action="list_department",
+                        description="查看本部门员工名单",
+                    ),
+                ],
+                reasoning="查询本部门员工名单",
+            )
+
         # 闲聊/问候：直接友好回复，不进 legacy 督导流
         if (
             intent == IntentType.SMALL_TALK

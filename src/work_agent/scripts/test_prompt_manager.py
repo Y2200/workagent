@@ -31,7 +31,12 @@ def test():
 
     assert result["name"] == "intent_router", result
 
-    assert result["version"] == "1.1", result
+    # 版本与 metadata 一致（动态校验，版本 bump 无需改测试）
+    from work_agent.prompts.metadata import PROMPT_METADATA
+
+    assert result["version"] == PROMPT_METADATA[
+        "intent_router"
+    ]["version"], result
 
     assert "{message}" in result["content"], "内容应含 message 占位符"
 
@@ -80,7 +85,11 @@ def test():
 
     version = manager.get_version("intent_router")
 
-    assert version == "1.1", version
+    from work_agent.prompts.metadata import PROMPT_METADATA
+
+    assert version == PROMPT_METADATA[
+        "intent_router"
+    ]["version"], version
 
     print(f"场景4a ✅ 版本读取正常: {version}")
 

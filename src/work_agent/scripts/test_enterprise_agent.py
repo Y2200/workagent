@@ -169,11 +169,23 @@ def test_b_user_tool():
     r3 = tool.execute(context=ctx_emp, action="resolve", name="不存在的员工XYZ")
     assert r3["status"] == "not_found", r3
 
-    # list_department：租户1 研发部
+    # list_department：普通员工（USER）拒绝（仅部门经理可看本部门员工）
     r4 = tool.execute(context=ctx_emp, action="list_department", department="研发部")
-    assert r4["status"] == "found", r4
-    assert len(r4["users"]) > 0
-    assert all(u["department"] == "研发部" for u in r4["users"])
+    assert r4["error"] == "permission_denied", r4
+
+    # list_department：部门经理（DEPARTMENT_ADMIN）本部门 → 名单
+    ctx_dept = _ctx(
+        permissions={"task:view"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    r4b = tool.execute(context=ctx_dept, action="list_department", department="研发部")
+    assert r4b["status"] == "found", r4b
+    assert len(r4b["users"]) > 0
+    assert all(u["department"] == "研发部" for u in r4b["users"])
+    # 返回姓名（real_name）+ 用户名（非 user_id 展示）
+    first = r4b["users"][0]
+    assert first["real_name"], "应返回姓名"
 
     # 无 task:view → denied
     ctx_no_perm = _ctx(permissions={"document:view"}, role_codes={"USER"}, tenant_id="1")
@@ -320,6 +332,23 @@ def test_d_department_tasks():
 # ======================
 # Phase 3：任务创建 Agent（带确认）
 # ======================
+
+
+def _purge_test_tasks(employee_id: int):
+    """删除测试标题残留任务（防止失败级联）"""
+    from work_agent.db.models.task import Task
+    from work_agent.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        rows = db.query(Task).filter(
+            Task.employee_id == employee_id,
+            Task.title.in_(["客户系统测试", "接口开发", "接口联调测试", "财务审核"]),
+        ).all()
+        for t in rows:
+            db.delete(t)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _cleanup_pending_creates():
@@ -472,6 +501,7 @@ def test_e_task_create_flow():
     # 执行人：A研发员工（租户1 研发部）
     target = _db_user("A研发员工")
     assert target, "缺少 A研发员工"
+    _purge_test_tasks(target.id)
 
     ctx_admin = _ctx(
         permissions={"task:view", "task:create"},
@@ -573,6 +603,210 @@ def test_e_task_create_flow():
         _cleanup_pending_creates()
 
 
+def test_e3_multi_turn_create():
+    """Part E3：多轮补充执行人（need_info → 回姓名 → 合并草稿 → 确认创建）"""
+    from work_agent.agent.tools.task_tool import TaskTool
+    from work_agent.core.container import task_service
+    from work_agent.db.session import SessionLocal
+
+    tool = TaskTool()
+
+    creator = _db_user("dept_admin_A")
+    assert creator, "缺少 dept_admin_A"
+    target = _db_user("A研发员工")
+    assert target, "缺少 A研发员工"
+    _purge_test_tasks(target.id)
+
+    ctx_admin = _ctx(
+        permissions={"task:view", "task:create"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    ctx_admin.user_id = creator.id
+
+    try:
+        # 1. 首次发起（缺执行人）→ need_info，部分草稿落库
+        r1 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content="发布一个客户系统测试任务，下周五完成",
+        )
+        assert r1["status"] == "need_info", r1
+        assert "employee_name" in r1["missing"], r1
+
+        # 2. 回单独姓名（短消息）→ 合并在途草稿 → awaiting_confirmation
+        r2 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content=target.real_name,
+        )
+        assert r2["status"] == "awaiting_confirmation", r2
+        draft = r2["draft"]
+        assert draft["employee_id"] == target.id, draft
+        assert draft["title"], "标题应从部分草稿继承"
+        assert "客户系统测试" in draft["title"], draft["title"]
+
+        # 3. 确认 → 落库
+        r3 = tool.execute(context=ctx_admin, action="confirm", content="确认")
+        assert r3["status"] == "task_created", r3
+        created_task_id = r3["task"]["id"]
+        db = SessionLocal()
+        try:
+            from work_agent.db.models.task import Task
+            task = db.query(Task).filter(Task.id == created_task_id).first()
+            assert task is not None and task.employee_id == target.id
+        finally:
+            db.close()
+
+        # 4. 缺执行人 → 回不存在的姓名 → employee_not_found（提示查看名单）
+        tool.execute(
+            context=ctx_admin,
+            action="create",
+            content="发布一个财务审核任务",
+        )
+        r4 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content="不存在的员工XYZ",
+        )
+        assert r4["status"] == "employee_not_found", r4
+        assert "查看本部门员工" in r4["message"], r4
+
+        # 5. 新句式「发布任务给X做…」→ 直接抽出执行人
+        #   （注意：标题避开第3步已创建的同名任务，防查重拦截）
+        r5 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content=f"发布任务给{target.real_name}做接口联调测试",
+        )
+        assert r5["status"] == "awaiting_confirmation", r5
+        assert r5["draft"]["employee_id"] == target.id, r5
+
+        print("✓ PartE3 多轮补充执行人（need_info → 回姓名 → 合并 → 创建）")
+
+        # 清理已创建任务
+        db = SessionLocal()
+        try:
+            from work_agent.db.models.task import Task
+            obj = db.query(Task).filter(Task.id == created_task_id).first()
+            if obj:
+                db.delete(obj)
+                db.commit()
+        finally:
+            db.close()
+
+    finally:
+        _cleanup_pending_creates()
+
+
+def test_e4_supplement_routing():
+    """Part E4：补充回复意图路由（在途草稿未完成 → 短消息强制 create）"""
+    from work_agent.agent.router.intent_router import IntentRouter
+    from work_agent.agent.tools.task_tool import TaskTool
+
+    creator = _db_user("dept_admin_A")
+    assert creator, "缺少 dept_admin_A"
+
+    ctx_admin = _ctx(
+        permissions={"task:view", "task:create"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    ctx_admin.user_id = creator.id
+
+    try:
+        # 无草稿：短消息不劫持（不强制 create）
+        assert IntentRouter._create_supplement_override(
+            "张三", {"user_id": creator.id},
+        ) is None
+
+        # 建一个未完成草稿（缺执行人）
+        tool = TaskTool()
+        r1 = tool.execute(
+            context=ctx_admin,
+            action="create",
+            content="发布一个客户系统测试任务",
+        )
+        assert r1["status"] == "need_info", r1
+
+        # 有未完成草稿：短姓名 → 强制 create（补充回复）
+        o = IntentRouter._create_supplement_override(
+            "张三", {"user_id": creator.id},
+        )
+        assert o is not None and o.intent == "create_task", o
+        assert o.tool == "task_tool", o
+
+        # 确认/取消 仍归确认/取消流程（不被劫持为 create）
+        assert IntentRouter._create_supplement_override(
+            "确认", {"user_id": creator.id},
+        ) is None
+
+        print("✓ PartE4 补充回复意图路由（在途草稿 → 短消息强制 create）")
+    finally:
+        _cleanup_pending_creates()
+
+
+def test_h_department_members():
+    """Part H：查看本部门员工（意图路由 → plan → Policy → 姓名格式化）"""
+    from work_agent.agent.agents.task_agent import TaskAgent
+    from work_agent.agent.planner import agent_planner
+    from work_agent.agent.policy import policy_service
+    from work_agent.agent.router.intent_router import IntentRouter
+
+    router = IntentRouter()
+
+    # 1. 规则回退 → query_department_members（user_tool）
+    intent = router._fallback("查看本部门员工")
+    assert intent.intent == "query_department_members", intent.intent
+    assert intent.tool == "user_tool", intent.tool
+
+    intent2 = router._fallback("部门有哪些员工")
+    assert intent2.intent == "query_department_members", intent2.intent
+
+    # 任务语境不误判（查看指定员工任务仍归 query_employee_task）
+    intent3 = router._fallback("查看张三的任务")
+    assert intent3.intent == "query_employee_task", intent3.intent
+
+    # 2. planner → user_tool / list_department
+    ctx_mgr = _ctx(
+        permissions={"task:view"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    plan = agent_planner.plan(
+        message="查看本部门员工",
+        intent_result=intent,
+        context=ctx_mgr,
+    )
+    assert plan.steps[0].tool == "user_tool", plan.steps
+    assert plan.steps[0].action == "list_department", plan.steps
+
+    # 3. Policy：经理放行，普通员工拒绝
+    assert policy_service.evaluate(
+        intent=intent.intent, plan=plan, context=ctx_mgr,
+    ).allowed is True
+
+    ctx_user = _ctx(
+        permissions={"task:view"},
+        role_codes={"USER"},
+        tenant_id="1", department="研发部",
+    )
+    denied = policy_service.evaluate(
+        intent=intent.intent, plan=plan, context=ctx_user,
+    )
+    assert denied.allowed is False, denied
+
+    # 4. TaskAgent 格式化：姓名（用户名），不含 user_id
+    agent = TaskAgent()
+    result = agent.run(context=ctx_mgr, plan=plan, message="查看本部门员工")
+    assert "员工名单" in result.response, result.response
+    assert "研发部" in result.response, result.response
+    assert "A研发员工" in result.response, result.response
+    assert "user_id" not in result.response, result.response
+
+    print("✓ PartH 查看本部门员工（路由 → plan → Policy → 姓名格式化）")
+
+
 def test_f_intent_planning():
     """Part F：task_create 意图路由 + plan"""
     from work_agent.agent.router.intent_router import IntentRouter
@@ -645,7 +879,10 @@ def test():
     test_d_department_tasks()
     test_e_task_create_flow()
     test_e2_deadline_parse()
+    test_e3_multi_turn_create()
+    test_e4_supplement_routing()
     test_f_intent_planning()
+    test_h_department_members()
     print("Enterprise Agent 测试全部通过")
 
 

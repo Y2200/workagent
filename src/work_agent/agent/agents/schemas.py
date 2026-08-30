@@ -53,6 +53,14 @@ class AgentResult(BaseModel):
         description="是否经用户确认"
     )
 
+    # 受约束 Agent Loop 实际执行步数（None=非循环路径）
+    # agent 字段保持底层能力名（knowledge_agent/analysis_agent）兼容既有评测断言，
+    # 循环已执行由 loop_steps / tool_calls 长度可观测
+    loop_steps: int | None = Field(
+        default=None,
+        description="受约束 Agent Loop 实际执行步数"
+    )
+
 
     def to_dict(self) -> dict:
 
@@ -69,4 +77,5 @@ class AgentResult(BaseModel):
             "tools_called": self.tools_called,
             "tool_calls": self.tool_calls,
             "confirmed": self.confirmed,
+            "loop_steps": self.loop_steps,
         }

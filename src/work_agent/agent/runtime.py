@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from work_agent.agent.agents.supervisor import supervisor_agent
 from work_agent.agent.context import AgentContext
+from work_agent.agent.loop import LOOP_KINDS, agent_loop, is_multi_hop
 from work_agent.agent.planner import agent_planner
 from work_agent.agent.router.intent_router import IntentRouter
 from work_agent.agent.schemas import IntentType
@@ -42,7 +43,8 @@ class AgentRuntime:
             supervisor=None,
             planner=None,
             config_service=None,
-            policy_service=None
+            policy_service=None,
+            loop=None
     ):
 
         self.intent_router = intent_router or IntentRouter()
@@ -50,6 +52,10 @@ class AgentRuntime:
         self.supervisor = supervisor or supervisor_agent
 
         self.planner = planner or agent_planner
+
+        # 受约束 Agent Loop（只读意图的 推理→执行→观察→再推理）
+        # 缺省全局单例；测试可注入 stub 以获得确定性
+        self.loop = loop or agent_loop
 
         self.config_service = config_service
 
@@ -321,11 +327,21 @@ class AgentRuntime:
 
                 else:
 
-                    agent_result = self.supervisor.dispatch(
+                    # 受约束 Agent Loop：只读意图（knowledge/risk）且开关开启 → 走循环
+                    # 否则回退原 supervisor → 专业 Agent（单步执行，零回归）
+                    agent_result = self._maybe_run_loop(
                         context=context,
                         plan=plan,
                         message=message,
                     )
+
+                    if agent_result is None:
+
+                        agent_result = self.supervisor.dispatch(
+                            context=context,
+                            plan=plan,
+                            message=message,
+                        )
 
                     result = agent_result.to_dict()
 
@@ -530,6 +546,45 @@ class AgentRuntime:
             for step in (plan.steps or [])
             if step.tool and step.tool not in enabled_set
         ]
+
+
+    def _maybe_run_loop(
+            self,
+            *,
+            context,
+            plan,
+            message: str
+    ):
+
+        """
+        受约束 Agent Loop 路由
+
+        三重门控（全部满足才走 AgentLoop，否则返回 None 走原 supervisor）：
+        1. plan.kind ∈ 只读循环白名单（knowledge/risk）——写操作意图永不进入循环
+        2. agent.loop.enabled 配置开关（默认 True）
+        3. 消息含多跳信号（对比/区别/和/分别 等多主题）——单一主题查询保持单步，
+           保证简单查询零成本变化、零回答漂移
+        """
+
+        if plan.kind not in LOOP_KINDS:
+
+            return None
+
+        if not is_multi_hop(message):
+
+            return None
+
+        if not self.loop.is_enabled(context):
+
+            return None
+
+        with tracer.span("loop", component="loop"):
+
+            return self.loop.run(
+                context=context,
+                plan=plan,
+                message=message,
+            )
 
 
     def _get_config_service(self):

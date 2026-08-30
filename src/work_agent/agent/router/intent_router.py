@@ -32,6 +32,7 @@ class IntentRouter:
         IntentType.SUBMIT_TASK: ("task_tool", True),
         IntentType.REMIND_TASK: ("notification_tool", True),
         IntentType.SUMMARY_TASK: ("task_tool", True),
+        IntentType.QUERY_DEPARTMENT_MEMBERS: ("user_tool", True),
         IntentType.POLICY_QUERY: ("knowledge_tool", True),
         IntentType.SMALL_TALK: ("", False),
         IntentType.UNKNOWN: ("", False),
@@ -81,6 +82,17 @@ class IntentRouter:
                 },
                 reasoning="任务上下文匹配",
             )
+
+        # 任务创建补充回复：在途草稿未完成（缺执行人/任务名）时，
+        # 短消息（如补执行人回「张三」）强制路由到 create，使其合并续补
+        supplement = self._create_supplement_override(
+            message,
+            user_context,
+        )
+
+        if supplement:
+
+            return supplement
 
         try:
 
@@ -272,6 +284,68 @@ class IntentRouter:
         except Exception:
 
             return None
+
+    @staticmethod
+    def _create_supplement_override(
+            message: str,
+            user_context: dict | None
+    ) -> IntentResult | None:
+
+        """
+        任务创建补充回复：在途草稿未完成（缺执行人/任务名）时，
+        短消息（姓名/任务名，如补执行人回「张三」）强制路由到 create，
+        使 preview_create_task 合并续补。
+
+        确认/取消由 _task_override 先行处理（此处排除）。
+        """
+
+        msg = message.strip()
+
+        if not msg or len(msg) > 12:
+
+            return None
+
+        if (
+            msg in ("确认", "确定")
+            or msg.startswith("确认")
+        ):
+
+            return None
+
+        if msg in ("取消",) or msg.startswith("取消"):
+
+            return None
+
+        user_id = (user_context or {}).get(
+            "user_id",
+        )
+
+        if not user_id:
+
+            return None
+
+        try:
+
+            from work_agent.services.task_service import task_service
+
+            if not task_service.has_incomplete_pending_create(
+                int(user_id),
+            ):
+
+                return None
+
+        except Exception:
+
+            return None
+
+        return IntentResult(
+            intent=IntentType.CREATE_TASK,
+            confidence=0.9,
+            need_tool=True,
+            tool="task_tool",
+            entities={"action": "create"},
+            reasoning="任务创建补充回复（在途草稿缺字段）",
+        )
 
     @staticmethod
     def _task_override(
@@ -474,6 +548,31 @@ class IntentRouter:
                 tool="task_tool",
                 entities={"action": "summary"},
                 reasoning="规则回退：命中任务汇总关键词",
+            )
+
+        # 查看本部门员工（query_department_members，部门经理；排除任务语境）
+        if (
+            not any(kw in msg for kw in ("任务", "进度"))
+            and (
+                "本部门员工" in msg
+                or "部门员工" in msg
+                or "部门成员" in msg
+                or "部门有哪些" in msg
+                or "有哪些员工" in msg
+                or "员工名单" in msg
+                or "部门都有谁" in msg
+                or "部门的人" in msg
+                or "同事名单" in msg
+            )
+        ):
+
+            return IntentResult(
+                intent=IntentType.QUERY_DEPARTMENT_MEMBERS,
+                confidence=0.6,
+                need_tool=True,
+                tool="user_tool",
+                entities={"action": "list_department"},
+                reasoning="规则回退：查看本部门员工",
             )
 
         task_keywords = [

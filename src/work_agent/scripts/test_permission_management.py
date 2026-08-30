@@ -12,8 +12,6 @@
 
 import time
 
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
 from work_agent.core.container import document_service, rag_service
@@ -149,13 +147,12 @@ def test():
     # 上传企业A采购审批制度（仅财务部/财务人员可见）
     # ======================
 
-    data = Path(
-        "knowledge/采购审批制度.md"
-    ).read_bytes()
-
     doc = document_service.upload(
         filename="采购审批制度.md",
-        data=data,
+        data=(
+            "采购审批制度：采购需询价比价，"
+            "签订采购合同。"
+        ).encode("utf-8"),
         category="采购管理",
         uploader="admin_A",
         tenant_id=tenant_a_id,

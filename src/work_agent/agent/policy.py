@@ -46,6 +46,7 @@ ROLE_REQUIRED_STEPS = {
     ("task_tool", "department_tasks"),
     ("task_tool", "employee_tasks"),
     ("task_tool", "summary"),
+    ("user_tool", "list_department"),
 }
 
 
@@ -113,6 +114,13 @@ INTENT_ACTION_PERMISSIONS: dict[str, dict[str, dict[str, tuple]]] = {
         },
     },
 
+    # 经理查看本部门员工（需管理角色，role gate 在 ROLE_REQUIRED_STEPS）
+    IntentType.QUERY_DEPARTMENT_MEMBERS: {
+        "user_tool": {
+            "list_department": ("task:view",),
+        },
+    },
+
     # System 扫描（系统链路）
     "system_scan": {
         "reminder_service": {
@@ -138,6 +146,9 @@ REDIRECT_MAP: dict[tuple, str] = {
     ),
     ("task_tool", "summary"): (
         "仅部门经理可查看部门任务汇总。"
+    ),
+    ("user_tool", "list_department"): (
+        "仅部门经理可查看本部门员工；你可回复「我的任务」查看自己的任务。"
     ),
 }
 

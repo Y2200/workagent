@@ -14,8 +14,6 @@ Multi Agent 架构测试（P5-2）
 
 import time
 
-from pathlib import Path
-
 from work_agent.agent.agents.registry import agent_registry
 from work_agent.agent.runtime import agent_runtime
 from work_agent.core.container import document_service
@@ -132,7 +130,10 @@ def test():
 
     doc_a = document_service.upload(
         filename="财务报销制度.md",
-        data=Path("knowledge/财务报销制度.md").read_bytes(),
+        data=(
+            "财务报销制度：差旅报销需提交发票，"
+            "超标需审批，报销流程见附件。"
+        ).encode("utf-8"),
         category="财务管理",
         uploader="admin_A",
         tenant_id=tenant_a_id,

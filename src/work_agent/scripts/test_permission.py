@@ -14,8 +14,6 @@
 
 import time
 
-from pathlib import Path
-
 from work_agent.core.container import document_service, rag_service
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.document_repository import DocumentRepository
@@ -92,18 +90,13 @@ def _upload_test_documents():
 
         db.close()
 
-    finance_file = Path(
-        "knowledge/财务报销制度.md"
-    )
-
-    project_file = Path(
-        "knowledge/项目延期管理制度.md"
-    )
-
     # 企业A财务报销制度：仅财务部/财务人员可见（不含通用"员工"角色）
     doc_a = document_service.upload(
-        filename=finance_file.name,
-        data=finance_file.read_bytes(),
+        filename="财务报销制度.md",
+        data=(
+            "财务报销制度：差旅报销需提交发票，"
+            "超标需审批。"
+        ).encode("utf-8"),
         category="财务管理",
         uploader="admin",
         tenant_id=tenant_a_id,
@@ -114,8 +107,11 @@ def _upload_test_documents():
 
     # 企业B项目管理制度：公开
     doc_b = document_service.upload(
-        filename=project_file.name,
-        data=project_file.read_bytes(),
+        filename="项目延期管理制度.md",
+        data=(
+            "项目延期管理制度：延期需提前报备，"
+            "超期需上报负责人。"
+        ).encode("utf-8"),
         category="项目管理",
         uploader="admin",
         tenant_id=tenant_b_id,

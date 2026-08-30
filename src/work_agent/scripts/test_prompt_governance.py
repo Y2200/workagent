@@ -114,7 +114,17 @@ def test():
 
     assert draft["status"] == "draft", draft
 
-    assert draft["version"] == "1.2", draft["version"]
+    # 草稿版本 = 基线版本 minor+1（动态校验，版本 bump 无需改测试）
+    base_version = PROMPT_METADATA.get(
+        TEST_PROMPT,
+        {},
+    ).get("version", "1.0")
+
+    major, minor = str(base_version).split(".")
+
+    expected_draft = f"{major}.{int(minor) + 1}"
+
+    assert draft["version"] == expected_draft, draft["version"]
 
     approved = prompt_governance_service.approve(
         name=TEST_PROMPT,
@@ -137,7 +147,7 @@ def test():
     # 激活后 PromptManager 立即解析新版本（缓存已清）
     reloaded = prompt_manager.load(TEST_PROMPT)
 
-    assert reloaded["version"] == "1.2", reloaded["version"]
+    assert reloaded["version"] == expected_draft, reloaded["version"]
 
     assert reloaded["content"] == DRAFT_CONTENT, reloaded["content"]
 
@@ -149,19 +159,19 @@ def test():
 
     rollback = prompt_governance_service.activate(
         name=TEST_PROMPT,
-        version="1.1",
+        version=base_version,
         updated_by="admin",
         audit_tenant_id="1",
         audit_user_id=1,
     )
 
-    assert rollback["version"] == "1.1", rollback
+    assert rollback["version"] == base_version, rollback
 
     rolled = prompt_manager.load(TEST_PROMPT)
 
-    assert rolled["version"] == "1.1", rolled["version"]
+    assert rolled["version"] == base_version, rolled["version"]
 
-    # 1.1 已 deprecated
+    # 草稿版本已 deprecated
     history = prompt_governance_service.list_history(TEST_PROMPT)
 
     status_map = {
@@ -169,9 +179,11 @@ def test():
         for item in history
     }
 
-    assert status_map["1.2"] == "deprecated", status_map
+    assert status_map[expected_draft] == "deprecated", status_map
 
-    print("场景3 ✅ 回滚（1.1 重新激活，1.2 deprecated）")
+    print(
+        f"场景3 ✅ 回滚（{base_version} 重新激活，{expected_draft} deprecated）"
+    )
 
     # ======================
     # 场景4：审计落库
@@ -181,7 +193,7 @@ def test():
 
     prompt_governance_service.activate(
         name=TEST_PROMPT,
-        version="1.2",
+        version=expected_draft,
         updated_by="admin",
         audit_tenant_id="1",
         audit_user_id=1,
@@ -215,7 +227,7 @@ def test():
         tenant_id="",
     )
 
-    assert platform_active.version == "1.2", platform_active.version
+    assert platform_active.version == expected_draft, platform_active.version
 
     # 租户 A/B 历史互不干扰
     history_a = prompt_governance_service.list_history(

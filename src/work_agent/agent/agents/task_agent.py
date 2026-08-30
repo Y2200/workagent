@@ -287,6 +287,44 @@ def _notification_text(result: dict) -> str:
     return "已发送提醒。"
 
 
+def _department_members_text(result: dict) -> str:
+
+    if result.get("error") == "permission_denied":
+
+        return result.get("message", "无权操作")
+
+    if result.get("status") != "found":
+
+        return "查询失败，请稍后重试。"
+
+    users = result.get("users") or []
+
+    department = result.get("department") or ""
+
+    if not users:
+
+        return f"{department or '本部门'}暂无员工。"
+
+    lines = [f"{department or '本部门'}员工名单："]
+
+    for i, u in enumerate(users, 1):
+
+        name = u.get("real_name") or u.get("username") or "未知"
+
+        username = u.get("username") or ""
+
+        # 显示「姓名（用户名）」，避免同名歧义
+        if username and username != name:
+
+            lines.append(f"{i}. {name}（{username}）")
+
+        else:
+
+            lines.append(f"{i}. {name}")
+
+    return "\n".join(lines)
+
+
 class TaskAgent(BaseAgent):
 
     """
@@ -444,6 +482,11 @@ class TaskAgent(BaseAgent):
         if result.get("status") == "error":
 
             return result.get("message", "操作失败")
+
+        # 查看本部门员工（部门经理）
+        if action == "list_department":
+
+            return _department_members_text(result)
 
         # 任务发布（解析 → 待确认）
         if action == "create":

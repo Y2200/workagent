@@ -8,9 +8,70 @@
 
 # ⚡ 当前状态（2026-08-21，GitHub Actions CI/CD 全自动上线 ✅）
 
-**代码状态**：本地 `master` = `e127062`，工作区干净（仅 AGENTS.md 未跟踪未定论），全部已推送。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态**：本地 `master` = `6ce7787`（审计可见性修复 `5cfa4fd` + CI 校验 `6ce7787`）。生产已上线：阿里云香港 `https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
 **✅ CI/CD 流水线已全自动跑通**：45/45 测试全绿 + SSH 部署 job 成功（deploy.sh master：git pull → docker build → 幂等迁移 → 前端 → nginx → healthcheck）。之后每次 push master 即自动测试+上线。
+
+## 最新（2026-08-30）：任务发布多轮补充修复 + 部门员工查看
+- **生产痛点（经理发不出任务）**：经理企微发布任务一直被回「我需要补充：执行人；请补充后继续」，怎么发都触发不了
+  - 根因1：执行人识别是死板正则（`services/task_service.py::_fallback_create_parse`），必须「给/安排/让 + 姓名 + 动词/任务」句式，「我要发布任务」「任务给张三」等抽不出姓名
+  - 根因2（主因）：多轮补充是死循环——`preview_create_task` 每次只解析当条消息，need_info 不持久化不合并；回「张三」纯姓名不合正则 → 永远补不完
+- **修复1 多轮合并**：`preview_create_task` 读在途草稿合并续补（title/执行人/deadline 缺失回退草稿）；缺字段落部分草稿（`task_pending_creates.employee_id` 可空）；**短消息（≤12字、无任务指令词）视为补充回复**：回姓名当执行人、回标题当任务名
+- **修复2 意图路由补充 override**：`intent_router._create_supplement_override`——在途草稿未完成（缺执行人或任务名）时，短消息强制路由到 create 合并续补（否则「张三」被判 small_talk 进不了 create）；`task_service.has_incomplete_pending_create`
+- **修复3 执行人识别放宽**：`_fallback_create_parse` 顺序尝试 5 个 pattern（给/安排/让 X 做…、发布任务给 X、任务给 X、执行人：X、X 负责…）；title 剥离 发布/创建/新增/做 等残留词
+- **新功能 查看本部门员工**：意图 `query_department_members`（「查看本部门员工」「部门有哪些员工」「员工名单」）→ planner → `user_tool.list_department`；**仅部门经理及以上**（Policy ROLE_REQUIRED_STEPS + user_tool 角色门双重拦截）、`check_department_scope` 保证不可跨部门；TaskAgent 格式化返回 **姓名（用户名）**，不含 user_id
+- **提示词**：intent_router v1.1→1.2（新增意图）；**部署后需 `POST /api/admin/prompts/seed` 重播种**，否则线上 LLM 意图路由不认「查看本部门员工」
+- **测试**：test_enterprise_agent 增 Part E3（多轮合并流）/E4（补充路由）/H（部门员工路由+Policy+姓名格式化），Part B 改（USER 拒 list_department）；test_prompt_manager/governance 硬编码版本号改动态（intent_router 基线 1.2）
+- **验证**：定向 8 套件全绿 + 全量回归 49/49
+
+## 最新（2026-08-29）：生产迁移阿里云香港 + 审计可见性修复 + CI 加固
+- **生产迁移**：腾讯云 → 阿里云香港 ECS 2C4G（免费试用 3 个月），DNS 已切换，部署成功，企微端到端可用
+  - Docker CE v29 + Compose v5.5 兼容；香港节点**免备案**；Docker 镜像拉取快
+  - **4G 内存加固**已进 `deploy/docker-compose.prod.yml`：各容器 mem_limit（PG 512m/etcd 256m/minio×2 512m/milvus 1536m/redis 128m/backend 2g）+ Milvus `CACHE_MAX_MEMORY_USAGE_LIMIT=1024` + `GOMEMLIMIT=1GiB` + PG 调参 + torch 单线程；服务器另配 2G swap
+  - **端口零暴露**（验证 `ss -ltn` 仅 22/80/443 + 回环 8000）：生产 compose 不发布 DB/Milvus/MinIO/Redis 端口，仅 backend `127.0.0.1:8000`
+  - `.env` 全套新强随机密钥；企微复用本机真实凭据
+- **审计可见性修复（5cfa4fd）**：Web 问答审计看不到企微记录（tenant=1）——`/logs` 把 SUPER_ADMIN（tenant=""）的 tenant_id 严格相等过滤
+  - `api/admin.py` 新增 `_tenant_scope`（SUPER_ADMIN → tenant_id=None 平台全量；租户管理员 → 本租户），应用于 /logs /operations /audit/statistics /dashboard/stats
+  - agent_log/operation_log/document 仓库：`tenant_id=None` 不加租户过滤
+  - `test_audit` 新增场景5（服务层+HTTP 层验证 SUPER_ADMIN 跨租户可见）；test_audit/test_dashboard/test_operation_audit/test_rbac 本地全绿
+- **CI 加固（6ce7787）**：测试前校验 `DOUBAO_API_KEY`，缺 LLM key 快速失败给明确提示（此前 LLM_API_KEY Secret 丢失 → 33 个测试在 import 阶段 get_llm() 全崩，报错模糊难排查）
+- **CD 正式启用**：新服务器部署密钥 + 3 个 GitHub Secrets（DEPLOY_HOST=新IP / DEPLOY_USER=root / DEPLOY_SSH_KEY=新私钥）已配；push master → test → deploy 全自动
+- **经验**：① 4G 跑全栈必须 mem_limit + swap，Milvus 是最大内存风险 ② `docker compose config` 不带 `-f deploy/...` 会误读开发版 compose（暴露端口），生产与开发端口策略不同 ③ 改 GitHub Secrets 时易误删 `LLM_API_KEY`
+- **验证**：CI 重跑 test 全绿 → deploy 成功 → Web 问答审计已出现企微记录；企微「我的任务」端到端回复正常
+
+## 最新（2026-08-28）：受约束 Agent Loop（推理→执行→观察→再推理）
+- **定位转变**：原 Runtime 是请求驱动型单步执行（intent→1工具→1回答，LLM 只在两端，无观察驱动再推理）。
+  新增 **受约束 Agent Loop**：LLM 进入执行中间，每执行一步只读工具就基于观察决定「下一步工具/直接回答」，直至回答或 max_steps 硬上限。
+- **能力**：`agent/loop.py`（AgentLoop）+ `prompts/agent_loop.txt`（v1.0）+ Runtime 接入
+  （`_maybe_run_loop` 三重门控）+ 配置 `agent.loop.enabled`(默认true)/`agent.loop.max_steps`(默认5)
+- **约束三件套**（企业铁律不破）：逐步 Policy 重校验（每步执行前）+ 工具白名单
+  （仅 knowledge_tool/analysis_tool，写操作永不进循环）+ max_steps 硬上限 + 观察上下文有界截断
+- **Guardrails（生产可控循环，7 项）**：max_steps(5) + 连续空结果熔断(max_empty_observations=2) +
+  Token 预算熔断(max_tokens_budget=8000) + 时间熔断(max_duration_seconds=60) +
+  RAG 质量门控(min_similarity=0.45) + 重复调用检测 + 确定性兜底（防幻觉）
+  → 兜底固定文案「未检索到足够依据，请补充关键词」，不让 LLM 基于低质量上下文收尾
+- **多跳门控（实证修正）**：简单查询（无对比/多主题信号）保持单步原路径 → 零成本/零回答漂移；
+  多主题/对比查询（对比/区别/和/分别…）自动获得循环能力。`test_agent_evaluation` 55 条仍全绿
+- **兼容**：agent 字段保持底层能力名（knowledge_agent/analysis_agent）兼容既有评测断言；
+  新增 `loop_steps` 字段可观测循环是否执行
+- **坐实截断**：`test_step_execution.py` 3 场景证明执行器只消费 steps[0]、Policy 层已是 loop-ready；
+  文档多步仍为单步是有意边界（document 是写/管理类意图，不进循环）
+- **测试**：`test_agent_loop.py` 14 场景（stub-LLM 确定性：核心循环 9 + Guardrails 5；
+  测试开头 `_purge_milvus` 清空含空租户残留向量）；全量回归绿
+- **顺带修复（预存）**：knowledge/ 删除后 7 处测试夹具改内存文本（test_multi_agent/
+  test_agent_intelligence/test_agent_trace/test_audit/test_parser/test_permission/test_permission_management）；
+  预存时区 bug——dashboard/audit_service 的 date.today() 对比 PG UTC created_at 在本地 00:00-08:00 统计归零，
+  照 cost_governance 既有修复模式改用 datetime.utcnow()
+
+## 最新（2026-08-24）：RAG 检索评测体系（简历实锤）
+- **能力**：`rag/evaluation.py` + `evaluation/datasets/rag_cases.json`（8 case：normal/全局文档/权限拒/跨租户）
+  + `scripts/test_rag_evaluation.py`（套件）+ `scripts/run_rag_evaluation.py`（CLI，`--judge`/`--chunk-experiment`）
+- **指标**：hit@k / recall@k / MRR / 权限拒正确率 / 租户隔离正确率 / 全局文档正确率
+- **场景断言**：用候选源集合区分「权限拒」与「检索漏」（permission_deny 断言 denied_docs⊆候选源 且不进结果 且 denied；cross_tenant 断言不在结果也不在候选 + owner 租户反证）
+- **调优**：top_k sweep（3/5/8，直接传参不改生产硬编码）；LLM-as-judge 响应质量（`--judge`，prompts/rag_judge.txt 外置）
+- **报告**：`reports/rag_eval_report.json`；测试文档内存导入（EVAL*，自包含，不依赖 knowledge/）
+- **顺带修复**：`agent/evaluation/evaluator.py` doc_a 改内存导入（knowledge/ 删除后 test_agent_evaluation 曾坏）
+- **验证**：test_rag_evaluation 8/8 全绿（全指标 1.0）；test_agent_evaluation/test_prompt_governance/test_knowledge_intelligence/test_tenant_global_docs 回归绿
 
 ## 最新（2026-08-20→21）：GitHub Actions CI/CD 流水线（方案A：服务器本地构建，无镜像仓库）
 
@@ -503,6 +564,10 @@ python -m work_agent.scripts.test_validator              # Task Command Validato
 python -m work_agent.scripts.test_task_flow              # Task Lifecycle 状态机（转移/取消/超管权限）
 python -m work_agent.scripts.test_knowledge_enterprise   # Enterprise Knowledge（权限类问题结合用户画像）
 python -m work_agent.scripts.test_system_agent           # System Proactive Agent（system 权限/主动扫描）
+python -m work_agent.scripts.test_rag_evaluation         # RAG 检索评测（hit@k/recall@k/MRR + 权限/租户场景 + top_k sweep）
+python -m work_agent.scripts.run_rag_evaluation          # RAG 评测 CLI（--top-k / --judge LLM-as-judge / --chunk-experiment 预留）
+python -m work_agent.scripts.test_agent_loop            # 受约束 Agent Loop（推理→执行→观察→再推理 + Guardrails，14 场景 stub-LLM）
+python -m work_agent.scripts.test_step_execution         # 多步计划执行边界（document 单步=有意边界；knowledge/risk 多步由 Loop 覆盖）
 python -m work_agent.scripts.migrate_conversation_messages # 会话消息表迁移（幂等）
 
 # 启动服务
