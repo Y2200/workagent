@@ -1,13 +1,24 @@
 import time
 
-from pathlib import Path
-
 from work_agent.agent.evaluation.dataset import EvaluationDataset
 from work_agent.agent.runtime import agent_runtime
 from work_agent.db.session import SessionLocal
 from work_agent.repositories.document_repository import DocumentRepository
 from work_agent.repositories.tenant_repository import TenantRepository
 from work_agent.repositories.user_repository import UserRepository
+
+
+# 评测用受限文档（内存导入，不依赖磁盘 knowledge/；
+# 该目录已从 git 删除，避免测试随文件存在与否而变化）
+_DOC_A_TEXT = """财务报销制度
+一、适用范围
+本制度适用于公司全体员工，所有报销事项必须遵守本制度。
+二、报销流程
+员工发生费用后填写报销单，粘贴发票，提交部门负责人审批，审批通过后由财务部复核，财务部确认后完成打款。
+三、报销标准
+差旅费、办公费、招待费按照公司财务报销标准执行，超标准部分不予报销。
+四、附则
+本制度自发布之日起执行，如有修订以最新版本为准。"""
 
 
 class Evaluator:
@@ -52,10 +63,10 @@ class Evaluator:
 
         tenant_b_id = self._tenant_id("ww_corp_B")
 
-        # 租户A受限文档
+        # 租户A受限文档（内存导入）
         doc_a = document_service.upload(
             filename="财务报销制度.md",
-            data=Path("knowledge/财务报销制度.md").read_bytes(),
+            data=_DOC_A_TEXT.encode("utf-8"),
             category="财务管理",
             uploader="admin_A",
             tenant_id=tenant_a_id,

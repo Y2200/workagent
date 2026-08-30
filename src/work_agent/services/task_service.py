@@ -893,7 +893,148 @@ class TaskService:
 
         deadline_text = (parsed.get("deadline_text") or "").strip()
 
-        # 1. 缺关键字段 → 追问
+        # 在途草稿（多轮补充：上一条缺字段的部分信息保留，本轮合并续补）
+        from work_agent.core.container import user_service
+
+        pending = self._get_active_pending_create(creator_id)
+
+        # 补充回复判定：短消息（≤12 字、无任务指令词），如「张三」「客户系统测试」。
+        # 只有补充回复才合并续补在途草稿；含任务词的完整消息一律视为全新创建
+        # （避免「我想发布一个新任务」误沿用上一条草稿的执行人）。
+        candidate = content.strip()
+
+        is_supplement = (
+            pending is not None
+            and len(candidate) <= 12
+            and not re.search(
+                r"任务|发布|安排|创建|新增|分派|指派|做|完成",
+                candidate,
+            )
+        )
+
+        resolved_employee_id = None
+
+        if is_supplement:
+
+            consumed_as_name = False
+
+            # 1) 缺执行人 → 短消息优先当作姓名补全
+            if not employee_name and pending.employee_id is None:
+
+                candidate_users = user_service.search_by_name(
+                    keyword=candidate,
+                    tenant_id=(
+                        creator_tenant_id
+                        if creator_tenant_id
+                        else ""
+                    ),
+                )
+
+                if len(candidate_users) == 1:
+
+                    employee_name = (
+                        candidate_users[0].real_name
+                        or candidate_users[0].username
+                    )
+
+                    resolved_employee_id = candidate_users[0].id
+
+                    consumed_as_name = True
+
+                elif len(candidate_users) > 1:
+
+                    self._save_partial_pending(
+                        creator_id=creator_id,
+                        creator_tenant_id=creator_tenant_id,
+                        title=title,
+                        employee_id=None,
+                        deadline_text=deadline_text,
+                        parsed=parsed,
+                        content=content,
+                    )
+
+                    return {
+                        "status": "employee_not_found",
+                        "message": (
+                            f"「{candidate}」匹配到多个员工，"
+                            "请补充更完整姓名"
+                            "（可回复「查看本部门员工」查看名单）"
+                        ),
+                        "parsed": parsed,
+                        "candidates": [
+                            {
+                                "id": u.id,
+                                "real_name": u.real_name or u.username,
+                                "department": u.department or "",
+                            }
+                            for u in candidate_users
+                        ],
+                    }
+
+                else:
+
+                    # 非姓名：缺标题则当标题，否则提示未找到
+                    if not title and not pending.title:
+
+                        title = candidate
+
+                    else:
+
+                        self._save_partial_pending(
+                            creator_id=creator_id,
+                            creator_tenant_id=creator_tenant_id,
+                            title=title,
+                            employee_id=None,
+                            deadline_text=deadline_text,
+                            parsed=parsed,
+                            content=content,
+                        )
+
+                        return {
+                            "status": "employee_not_found",
+                            "message": (
+                                f"未找到员工「{candidate}」，"
+                                "请确认姓名"
+                                "（可回复「查看本部门员工」查看名单）"
+                            ),
+                            "parsed": parsed,
+                        }
+
+            # 2) 缺标题 → 短消息当标题（未被当姓名消费时）
+            if (
+                not consumed_as_name
+                and not title
+                and not pending.title
+            ):
+
+                title = candidate
+
+            # 3) 继承草稿其余字段（姓名被消费时标题必须来自草稿）
+            if consumed_as_name or not title:
+                title = pending.title or ""
+
+            if not employee_name and pending.employee_id:
+
+                emp = user_service.get_by_id(
+                    pending.employee_id,
+                )
+
+                if emp:
+                    employee_name = (
+                        emp.real_name
+                        or emp.username
+                    )
+                    resolved_employee_id = pending.employee_id
+
+            if not deadline_text:
+                deadline_text = (
+                    pending.parsed or {}
+                ).get(
+                    "deadline_text",
+                    "",
+                )
+
+        # 1. 缺关键字段 → 追问（落部分草稿，供下一轮合并）
         missing = []
 
         if not title:
@@ -903,6 +1044,16 @@ class TaskService:
             missing.append("employee_name")
 
         if missing:
+
+            self._save_partial_pending(
+                creator_id=creator_id,
+                creator_tenant_id=creator_tenant_id,
+                title=title,
+                employee_id=resolved_employee_id,
+                deadline_text=deadline_text,
+                parsed=parsed,
+                content=content,
+            )
 
             return {
                 "status": "need_info",
@@ -917,45 +1068,53 @@ class TaskService:
             }
 
         # 2. 执行人 DB 确定性解析
-        from work_agent.core.container import user_service
+        if resolved_employee_id:
 
-        users = user_service.search_by_name(
-            keyword=employee_name,
-            tenant_id=(
-                creator_tenant_id
-                if creator_tenant_id
-                else ""
-            ),
-        )
+            employee = user_service.get_by_id(
+                resolved_employee_id,
+            )
 
-        if not users:
+        else:
 
-            return {
-                "status": "employee_not_found",
-                "message": f"未找到员工「{employee_name}」，请确认姓名",
-                "parsed": parsed,
-            }
-
-        if len(users) > 1:
-
-            return {
-                "status": "employee_not_found",
-                "message": (
-                    f"「{employee_name}」匹配到多个员工，"
-                    "请补充更完整姓名"
+            users = user_service.search_by_name(
+                keyword=employee_name,
+                tenant_id=(
+                    creator_tenant_id
+                    if creator_tenant_id
+                    else ""
                 ),
-                "parsed": parsed,
-                "candidates": [
-                    {
-                        "id": u.id,
-                        "real_name": u.real_name or u.username,
-                        "department": u.department or "",
-                    }
-                    for u in users
-                ],
-            }
+            )
 
-        employee = users[0]
+            if not users:
+
+                return {
+                    "status": "employee_not_found",
+                    "message": (
+                        f"未找到员工「{employee_name}」，请确认姓名"
+                    ),
+                    "parsed": parsed,
+                }
+
+            if len(users) > 1:
+
+                return {
+                    "status": "employee_not_found",
+                    "message": (
+                        f"「{employee_name}」匹配到多个员工，"
+                        "请补充更完整姓名"
+                    ),
+                    "parsed": parsed,
+                    "candidates": [
+                        {
+                            "id": u.id,
+                            "real_name": u.real_name or u.username,
+                            "department": u.department or "",
+                        }
+                        for u in users
+                    ],
+                }
+
+            employee = users[0]
 
         # 3. 截止时间代码规则优先
         deadline = self._parse_deadline_text(deadline_text)
@@ -1016,6 +1175,90 @@ class TaskService:
             "draft": draft,
             "pending_id": pending.id,
         }
+
+    def _get_active_pending_create(
+            self,
+            creator_id: int
+    ):
+
+        """
+        读取创建者在途草稿（多轮补充状态）
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            return self.repository.get_active_pending_create(
+                db,
+                creator_id,
+            )
+
+        finally:
+
+            db.close()
+
+    def has_incomplete_pending_create(
+            self,
+            creator_id: int
+    ) -> bool:
+
+        """
+        是否存在「未完成」的在途创建草稿（缺执行人或任务名）
+
+        供意图路由判断「补充回复」（如补执行人回「张三」）：
+        只有草稿缺字段时才把短消息路由到 create 合并续补。
+        """
+
+        pending = self._get_active_pending_create(
+            creator_id,
+        )
+
+        return bool(
+            pending
+            and not (pending.employee_id and pending.title)
+        )
+
+    def _save_partial_pending(
+            self,
+            *,
+            creator_id: int,
+            creator_tenant_id: str,
+            title: str,
+            employee_id: int | None,
+            deadline_text: str,
+            parsed: dict,
+            content: str,
+    ) -> None:
+
+        """
+        保存部分草稿（缺字段时），使下一轮可合并续补
+        """
+
+        db = SessionLocal()
+
+        try:
+
+            self.repository.upsert_pending_create(
+                db,
+                creator_id=creator_id,
+                creator_tenant_id=creator_tenant_id,
+                employee_id=employee_id,
+                title=title or "",
+                description=parsed.get("description") or "",
+                deadline=(
+                    self._parse_deadline_text(deadline_text)
+                    if deadline_text
+                    else None
+                ),
+                priority=parsed.get("priority") or "normal",
+                raw_message=content,
+                parsed=dict(parsed or {}),
+            )
+
+        finally:
+
+            db.close()
 
     def confirm_pending_create(
             self,
@@ -1311,12 +1554,65 @@ class TaskService:
             }
 
     @staticmethod
+    @staticmethod
+    def _extract_employee_name(
+            content: str
+    ) -> str:
+
+        """
+        确定性提取执行人姓名（多 pattern 顺序尝试，首个命中即取）
+
+        覆盖句式：
+        1. 给/安排/让/分派/指派 + 姓名 + 动作/任务（原句式）
+        2. 发布/创建/新增…任务 + 给 + 姓名（如「发布任务给张三做…」）
+        3. 任务/活 + 给/派给 + 姓名（如「任务给张三」）
+        4. 执行人/负责人 + [:] + 姓名（如「执行人：张三」）
+        5. 行首姓名 + 负责/来做/跟进/牵头（如「张三负责客户系统测试」）
+        """
+
+        patterns = [
+            re.compile(
+                r"(?:给|安排|让|分派|指派)\s*"
+                r"(?!(?:一个|一些|这个|那个|个|下|所有))\s*"
+                r"([一-龥A-Za-z]{2,12}?)"
+                r"(?=安排|发布|分派|指派|做|完成|开发|测试|任务|"
+                r"负责|跟进|牵头|执行|，|,|。|的|了)"
+            ),
+            re.compile(
+                r"(?:发布|创建|新增|新建|下发)\s*(?:任务|活|事项)?\s*"
+                r"(?:给|派给|分给|安排给|交办给)\s*"
+                r"([一-龥A-Za-z]{2,12})"
+            ),
+            re.compile(
+                r"(?:任务|活|事项)\s*(?:给|派给|分给|安排给)\s*"
+                r"([一-龥A-Za-z]{2,12})"
+            ),
+            re.compile(
+                r"(?:执行人|负责人)\s*[:：]?\s*"
+                r"([一-龥A-Za-z]{2,12})"
+            ),
+            re.compile(
+                r"(?:^|[，,。；;、])\s*([一-龥A-Za-z]{2,5}?)\s*"
+                r"(?:负责|来做|跟进|牵头|执行)"
+            ),
+        ]
+
+        for pat in patterns:
+
+            match = pat.search(content)
+
+            if match:
+                return match.group(1)
+
+        return ""
+
+    @staticmethod
     def _fallback_create_parse(
             content: str
     ) -> dict:
 
         """
-        确定性回退：提取执行人（给/安排/让 + 姓名）+ 任务名
+        确定性回退：提取执行人（多句式）+ 任务名
         """
 
         title = ""
@@ -1325,18 +1621,7 @@ class TaskService:
 
         deadline_text = ""
 
-        # 执行人：匹配「给XX / 安排XX / 让XX」，遇指令词/任务词即停，
-        # 排除量词「一个/一些/这个」等（避免"安排一个任务"误判执行人）
-        match = re.search(
-            r"(?:给|安排|让|分派|指派)\s*"
-            r"(?!(?:一个|一些|这个|那个|个|下|所有))\s*"
-            r"([一-龥A-Za-z]{2,12}?)"
-            r"(?=安排|发布|分派|指派|做|完成|开发|测试|任务|，|,|。|的|了)",
-            content,
-        )
-
-        if match:
-            employee_name = match.group(1)
+        employee_name = TaskService._extract_employee_name(content)
 
         # 截止：匹配「X天后/下周五/明天/今天」
         match = re.search(
@@ -1356,7 +1641,11 @@ class TaskService:
                 "",
             )
 
-        for prefix in ("给", "安排", "让", "分派", "指派", "完成", "任务"):
+        for prefix in (
+            "给", "安排", "让", "分派", "指派", "完成", "做",
+            "任务", "发布", "创建", "新增", "下发", "负责",
+            "执行人", "负责人", "一个",
+        ):
 
             title_text = title_text.replace(
                 prefix,

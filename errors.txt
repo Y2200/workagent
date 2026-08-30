@@ -709,3 +709,151 @@ agent 日志也是租户""（seed_tenants "员工A" 单租户""）。admin 以�
 改动一个配置可能破坏看似无关的"默认租户可见"测试；平台级管理员租户应固定""
 验证：待 CI 全绿
 ====================
+
+====================
+时间：2026-08-24
+Phase：RAG 检索评测体系（简历实锤）
+文件：agent/evaluation/evaluator.py
+问题：knowledge/ 目录删除后 test_agent_evaluation 失败
+现象：`Evaluator.setup()` 硬编码 `Path("knowledge/财务报销制度.md").read_bytes()`；
+用户已删除 git 中的 knowledge/（早期测 RAG 的测试件，现在支持 Web 上串文档不再需要）→
+文件不存在 → FileNotFoundError → 45 套件中 test_agent_evaluation 拉红 CI 门禁
+原因分析：评测夹具依赖磁盘文件，与"knowledge/ 已删除"这一仓库状态耦合
+解决过程：仿 test_knowledge_intelligence.py 内存文本导入模式，新增 _DOC_A_TEXT 常量，
+doc_a 改用 `_DOC_A_TEXT.encode("utf-8")`，删除 Path 导入
+最终方案：测试夹具全部自包含（内存），不依赖磁盘 knowledge/*.md
+是否增加测试：是（test_agent_evaluation 回归绿；新增 test_rag_evaluation 完全自包含）
+验证：test_agent_evaluation 场景1-6 全过；test_rag_evaluation 8/8 全绿
+====================
+
+====================
+时间：2026-08-24
+Phase：RAG 检索评测体系（简历实锤）
+文件：src/work_agent/rag/evaluation.py + evaluation/datasets/rag_cases.json + scripts/test_rag_evaluation.py + scripts/run_rag_evaluation.py + prompts/rag_judge.txt
+问题：无（新增能力）——补全"结合业务场景对召回效果、响应质量量化测试优化"的证据
+能力：
+- Golden 评测集 8 case（normal×3 / global_doc×2 / permission_deny×2 / cross_tenant×1），
+  case 带 expected_documents（必须出现）与 denied_documents（必须被拒）
+- 指标 hit@k / recall@k / MRR / 权限拒正确率 / 租户隔离正确率 / 全局文档正确率
+- 场景断言区分「权限拒」与「检索漏」：_candidate_sources 取权限过滤前的候选源集合，
+  permission_deny 断言 denied_docs ⊆ 候选源 且 不进结果 且 denied==True；
+  cross_tenant 断言不在结果也不在候选（Milvus 层隔离）+ owner 租户 filter 反证
+- top_k sweep（3/5/8）：search_with_meta 直接传参，不改生产硬编码
+- LLM-as-judge（--judge 可选）：prompts/rag_judge.txt（Prompt 外置）+ metadata.py 注册，
+  复用 knowledge_answer 生成回答 → judge 打相关性/忠实度/完整性分；规则化 grounding 零 token 恒跑
+- 报告 reports/rag_eval_report.json
+- 陷阱：上传必传非空 category（否则管线触发 LLM 自动分类）；空租户文档 cleanup_tenant_data
+  不清理，须显式删 + EVAL% 孤儿扫（_cleanup_start）
+验证：test_rag_evaluation 8/8 全绿（hit@k=1.0/recall@k=1.0/mrr=1.0/权限拒=1.0/租户隔离=1.0/全局文档=1.0）；
+test_agent_evaluation / test_prompt_governance / test_knowledge_intelligence / test_tenant_global_docs 回归绿
+====================
+
+====================
+时间：2026-08-28
+Phase：受约束 Agent Loop（推理→执行→观察→再推理）
+文件：agent/loop.py + prompts/agent_loop.txt + agent/runtime.py + core/config_defs.py + prompts/metadata.py + scripts/test_agent_loop.py + scripts/test_step_execution.py + agent/agents/schemas.py
+问题：执行器只消费 plan.steps[0]（多步计划 steps[1:] 被静默丢弃），无观察驱动再推理
+现象：planner.plan_with_llm 能返回多步 PlanStep，但 runtime → supervisor → 专业 Agent
+（operation_agent/knowledge_agent/analysis_agent）都只取 steps[0]；且 plan_with_llm 在生产
+是死代码（runtime 只调 planner.plan）。LLM 只在两端（意图/回答），不在执行中间。
+坐实：新增 test_step_execution.py 3 场景（Agent 级/Runtime 级只执行 steps[0]；Policy 层
+已遍历全部步骤=loop-ready）。结论：截断只在执行器，不在策略层。
+解决过程：
+- 新增 agent/loop.py：AgentLoop（种子步=确定性计划第一步 → 执行工具 → 观察 → LLM 再推理
+  [agent_loop.txt] 决定「下一步工具/直接回答」→ 循环直至回答或 max_steps 用尽强制收尾）
+- 约束三件套：逐步 Policy 重校验 + 工具白名单（仅 knowledge_tool/analysis_tool，写操作
+  永不进循环）+ max_steps 硬上限（默认5）；观察上下文有界（单条500/总4000 字符截断）
+- Runtime 接入：_maybe_run_loop 三重门控 = plan.kind∈{knowledge,risk} + agent.loop.enabled
+  + 消息多跳信号（is_multi_hop：对比/区别/和/分别 等多主题）；agent 字段保持底层能力名
+  （knowledge_agent/analysis_agent）兼容既有评测断言；新增 loop_steps 可观测
+- Prompt 外置：prompts/agent_loop.txt（metadata.py 注册 v1.0，variables 6 个）
+- 配置：agent.loop.enabled(默认True) + agent.loop.max_steps(默认5) 于 CONFIG_DEFINITIONS
+关键发现（实证）：循环对全部 knowledge/risk 默认开启时，真实 DeepSeek 对简单查询
+「财务报销制度是什么」会自主做第 2 次检索（tools_called 变 2 次）→ 打破「简单查询
+成本不变」且破坏 test_multi_agent 断言。→ 加多跳信号门控：单主题查询走原单步路径，
+保证简单查询零成本/零回答漂移（test_agent_evaluation 55 条仍全绿）。
+顺带修复：test_multi_agent.py 夹具从 Path("knowledge/*.md") 改内存文本
+（knowledge/ 目录已删除，同 evaluator.py 之前修复模式）。
+是否增加测试：是（test_agent_loop.py 9 场景：多跳/单步终止/max_steps/白名单拒绝/
+权限拒绝/逐步Policy/Runtime集成/关闭回归/单跳门控；均 stub-LLM 确定性）
+验证：test_agent_loop 9/9；test_multi_agent 5/5；test_agent_evaluation 55 条
+intent/tool/agent/security 全 1.0；test_rag_evaluation 8/8；test_step_execution 3/3；
+test_agent_planner/test_tool_calling/test_policy/test_knowledge_enterprise 全绿
+====================
+
+====================
+时间：2026-08-28
+Phase：受约束 Agent Loop Guardrails（生产可控循环升级）
+文件：agent/loop.py + core/config_defs.py + prompts/agent_loop.txt + services/dashboard_service.py + services/audit_service.py
+问题：Agent Loop 只有 max_steps，缺运行保护（RAG 查不到反复重试/空结果循环/Token 失控/超时/幻觉）
+解决过程（按用户规范实现 7 项 Guardrails）：
+- 连续空结果熔断：agent.loop.max_empty_observations(默认2)——RAG 查不到就停，不换 query 反复重试
+- Token 预算熔断：agent.loop.max_tokens_budget(默认8000)——TokenUsageCallback 跨迭代累计，超限兜底
+  （AgentLoop 增 usage_callback 注入点，测试可用 FakeCallback 验证）
+- 时间熔断：agent.loop.max_duration_seconds(默认60)——time.monotonic() 比较，超时兜底
+  经验：实测 DeepSeek 单次调用 10-30s，默认 15s 会误杀正常多步循环 → 调 60s
+- Prompt 调优：agent_loop.txt 收紧「提议工具」条件（仅明显缺必需信息才再查；一次命中相关
+  制度即直接回答；禁止为"更详细"穷搜）——演示实测 loop_steps 从 4 收敛到 1，token 8143→1076
+- RAG 质量门控：agent.loop.min_similarity(默认0.45)——最高检索分低于阈值视为无有效知识
+  经验：bge-small-zh 余弦分普遍 0.5-0.7（实测相关文档可低至 0.59），0.65 会误伤，默认取 0.45
+- 重复调用检测：同一 (tool,action,query) 不执行第二次（call_history）
+- 兜底确定性化：保护触发返回固定文案（有观察→罗列已检索内容；无观察→请补充关键词），
+  不再让 LLM 基于低质量上下文收尾（防幻觉）；原 _force_answer LLM 路径移除
+- 兜底文案：当前知识库未检索到足够依据，无法确认相关制度内容，请补充关键词或联系管理员。
+顺带修复（预存，非本阶段引入）：
+- knowledge/ 目录删除后 6 个测试夹具 FileNotFoundError（test_agent_intelligence/test_agent_trace/
+  test_audit/test_parser/test_permission/test_permission_management + test_multi_agent 共 7 处）
+  → 全部改内存文本（同 evaluator.py 既有修复模式）
+- 预存时区 bug：dashboard/audit_service 用 date.today()（本地）对比 PG UTC created_at，
+  本地 00:00-08:00（UTC+8）时段 today 统计归零；cost_governance 早已用 datetime.utcnow() 修过 →
+  照同一模式修复 dashboard_service + audit_service
+是否增加测试：是（test_agent_loop.py 扩到 14 场景：核心循环 9 + Guardrails 5；
+测试开头 _purge_milvus 清空含空租户残留向量——cleanup_tenant_data 只清租户 1/2）
+验证：test_agent_loop 14/14；test_dashboard/test_audit_lifecycle/test_llm_cost 绿；test_agent_evaluation
+55 条 intent/tool/agent/security 全 1.0；test_rag_evaluation 8/8；全量回归绿
+====================
+时间：2026-08-29
+Phase：生产迁移阿里云香港 + 审计可见性 + CI 排障
+问题1（CI 大面积失败 33/45）：push 后大量测试 import 阶段崩
+  openai.OpenAIError: Missing credentials。根因：GitHub Secret `LLM_API_KEY` 被误删/清空，
+  get_llm()（agent/llm.py:17）api_key=settings.doubao_api_key 为空 → agent_registry 初始化即崩，
+  所有 import wechat→runtime→agents 链的测试全挂（不 import 的 12 个通过）。
+  修复：恢复 LLM_API_KEY Secret（DeepSeek key）。加固：ci.yml 测试前校验 DOUBAO_API_KEY 非空，
+  缺 key 打印明确提示 exit 1（commit 6ce7787）。
+  经验：改 DEPLOY 类 Secret 后务必确认 LLM_API_KEY 还在；CI 失败先看是否 import 阶段公共异常。
+问题2（Web 问答审计空白）：企微有成功问答，Web /logs 看不到。根因：/logs 端点把 SUPER_ADMIN
+  （tenant_id=""）严格按租户过滤，企微日志 tenant="1" 被挡。修复：api/admin.py `_tenant_scope`
+  （SUPER_ADMIN→None 平台全量，租户管理员→本租户）+ 仓库 tenant_id=None 不加过滤（commit 5cfa4fd）。
+  验证：test_audit 场景5（服务层+HTTP 层跨租户可见）+ test_dashboard/test_operation_audit/test_rbac 全绿。
+问题3（4G 内存）：阿里云香港 2C4G 跑全栈，Milvus 是最大 OOM 风险。加固进 compose：
+  各容器 mem_limit + Milvus CACHE_MAX_MEMORY_USAGE_LIMIT/GOMEMLIMIT + PG 调参 + torch 单线程
+  + 服务器 2G swap。验证：Milvus healthy 无重启，端口零暴露（ss 仅 22/80/443+回环8000）。
+是否增加测试：是（test_audit 场景5）
+验证：CI test 全绿 → deploy 成功 → Web 问答审计出现企微记录
+====================
+时间：2026-08-30
+Phase：任务发布多轮补充修复 + 部门员工查看
+问题（生产企微）：部门经理发布任务一直被回「我需要补充：执行人；请补充后继续」，怎么发都触发不了。
+根因：
+  1. 执行人识别是死板正则（task_service._fallback_create_parse），必须「给/安排/让+姓名+动词/任务」句式，
+     「我要发布任务」「任务给张三」「执行人张三」等抽不出姓名。
+  2. 主因：多轮补充是死循环——need_info 不持久化、每轮独立解析；回「张三」纯姓名不合正则 → 永远补不完。
+  3. 短消息「张三」会被意图路由判 small_talk/unknown，根本进不了 create 流程。
+修复：
+  - preview_create_task 读在途草稿合并续补（title/执行人/deadline 缺失回退草稿）+ 缺字段落部分草稿
+    （task_pending_creates.employee_id 可空，upsert 已在途唯一）
+  - 短消息（≤12字、无任务词）视为补充回复：回姓名当执行人、回标题当任务名
+  - intent_router._create_supplement_override：在途草稿未完成（has_incomplete_pending_create）时短消息强制 create
+  - _fallback_create_parse 顺序尝试 5 个 pattern 放宽执行人识别；title 剥离 发布/创建/新增/做 残留词
+  - 新意图 query_department_members：查看本部门员工（仅经理、不可跨部门、返回姓名+用户名）
+经验：
+  - 企微多轮对话无状态：必须持久化中间草稿 + 路由层识别补充回复，两者缺一不可（只改解析合并不够）
+  - 编辑代码时勿并发跑全量回归：子进程可能导入中间态文件，误报 AttributeError（test_agent_intelligence 曾中招）
+  - 版本号硬编码断言会在 bump 时碎，统一改从 PROMPT_METADATA 动态取（test_prompt_manager/governance）
+验证：
+  - test_enterprise_agent（Part E3 多轮合并 / E4 补充路由 / H 部门员工 + Part B 权限改）
+  - test_policy / test_task_flow / test_validator / test_intent_router / test_prompt_governance /
+    test_prompt_manager / test_agent_intelligence 全绿
+  - 全量回归 49/49
+部署注意：intent_router v1.1→1.2，部署后需 POST /api/admin/prompts/seed 重播种
+====================

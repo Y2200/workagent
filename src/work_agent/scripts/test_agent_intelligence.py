@@ -13,8 +13,6 @@ Agent 智能体完整测试（Phase 4-7）
 
 import time
 
-from pathlib import Path
-
 from work_agent.agent.llm import get_llm
 from work_agent.agent.router.intent_router import IntentRouter
 from work_agent.agent.runtime import AgentRuntime
@@ -142,7 +140,10 @@ def test():
     # 准备：租户A受限文档 + 租户B文档
     # ======================
 
-    finance = Path("knowledge/财务报销制度.md").read_bytes()
+    finance = (
+        "财务报销制度：差旅报销需提交发票，"
+        "超标需审批。"
+    ).encode("utf-8")
 
     doc_a = document_service.upload(
         filename="财务报销制度.md",

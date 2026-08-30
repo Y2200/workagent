@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import datetime, time
 
 from work_agent.config import settings
 from work_agent.db.session import SessionLocal
@@ -39,9 +39,12 @@ class DashboardService:
         tenant.total 为平台级租户总数（RBAC 上线后按角色裁剪）
         """
 
+        # DB created_at 由 server_default=func.now() 生成（Postgres UTC）。
+        # 时区对齐：today 边界用 UTC（同 cost_governance 既有修复），
+        # 避免本地时区（UTC+8）凌晨时 date.today() 与 UTC 存储错位导致 today 计数为 0
         today_start = datetime.combine(
-            date.today(),
-            time.min
+            datetime.utcnow().date(),
+            time.min,
         )
 
         db = SessionLocal()

@@ -6,8 +6,8 @@ Prompt 元数据注册表
 
 PROMPT_METADATA = {
     "intent_router": {
-        "version": "1.1",
-        "description": "意图识别（企业任务意图拆分 Phase 7A）",
+        "version": "1.2",
+        "description": "意图识别（企业任务意图拆分 Phase 7A + 部门成员查询）",
         "variables": [
             "message",
             "user_context",
@@ -170,6 +170,33 @@ PROMPT_METADATA = {
         "variables": [
             "query",
             "history",
+        ],
+    },
+    # ======================
+    # RAG 检索评测（LLM-as-judge）
+    # ======================
+    "rag_judge": {
+        "version": "1.0",
+        "description": "RAG 回答质量评测（相关性/忠实度/完整性）",
+        "variables": [
+            "query",
+            "chunk",
+            "answer",
+        ],
+    },
+    # ======================
+    # 受约束 Agent Loop（推理→执行→观察→再推理）
+    # ======================
+    "agent_loop": {
+        "version": "1.0",
+        "description": "受约束 Agent Loop 循环决策：基于观察决定下一步工具或直接回答",
+        "variables": [
+            "message",
+            "user_context",
+            "user_profile",
+            "transcript",
+            "available_tools",
+            "max_steps",
         ],
     },
 }

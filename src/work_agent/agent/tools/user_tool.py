@@ -142,10 +142,29 @@ class UserTool(BaseTool):
         """
         列出部门成员（经 user_service）
 
-        部门作用域：DEPARTMENT_ADMIN 强制本部门（permissions.py 校验）。
+        权限要求（仅部门经理及以上，不可跨部门）：
+        - 角色门：仅 SUPER_ADMIN / TENANT_ADMIN / DEPARTMENT_ADMIN
+        - 部门作用域：DEPARTMENT_ADMIN 强制本部门（permissions.py 校验）
         """
 
         from work_agent.agent.tools.permissions import check_department_scope
+
+        # 角色门：普通员工（USER）不可查看部门员工名单
+        role_codes = getattr(
+            context,
+            "role_codes",
+            set(),
+        )
+
+        if not (
+            role_codes
+            & {"SUPER_ADMIN", "TENANT_ADMIN", "DEPARTMENT_ADMIN"}
+        ):
+
+            return {
+                "error": "permission_denied",
+                "message": "仅部门经理可查看本部门员工",
+            }
 
         target = department or context.department
 

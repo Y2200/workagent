@@ -5,20 +5,19 @@
     python -m work_agent.scripts.test_parser
 """
 
-from pathlib import Path
-
 from work_agent.document.parser import parse_document
 
 
 def test_markdown():
 
-    path = Path(
-        "knowledge/财务报销制度.md"
-    )
-
     parsed = parse_document(
-        path.name,
-        path.read_bytes()
+        "财务报销制度.md",
+        (
+            "---\n"
+            "title: 财务报销制度\n"
+            "---\n"
+            "差旅报销需提交发票，超标需审批。"
+        ).encode("utf-8")
     )
 
     assert parsed.metadata.get("title") == "财务报销制度", parsed.metadata

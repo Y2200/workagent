@@ -55,11 +55,15 @@
    任务汇总/部门周报（部门经理/系统视角）。
    例如："本周部门任务汇总" "部门周报"
 
-12. small_talk
+12. query_department_members
+   部门经理查看本部门员工名单（仅本部门经理，不可跨部门；返回姓名+用户名）。
+   例如："查看本部门员工" "部门有哪些员工" "部门成员名单" "员工名单" "本部门都有谁"
+
+13. small_talk
    普通寒暄，无关工作。
    例如："你好" "谢谢" "在吗"
 
-13. unknown
+14. unknown
    无法归类。
 
 # 工具选择
@@ -73,6 +77,7 @@
 - create_task → need_tool=true, tool=task_tool
 - remind_task → need_tool=true, tool=notification_tool
 - summary_task → need_tool=true, tool=task_tool
+- query_department_members → need_tool=true, tool=user_tool
 - workflow_request → need_tool=false
 - risk_analysis → need_tool=false
 - small_talk → need_tool=false

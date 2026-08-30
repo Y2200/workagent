@@ -45,6 +45,9 @@ class IntentType:
     # 系统生成部门任务总结
     SUMMARY_TASK = "summary_task"
 
+    # 经理查看本部门员工名单（仅本部门经理，不可跨部门）
+    QUERY_DEPARTMENT_MEMBERS = "query_department_members"
+
     # 制度查询
     POLICY_QUERY = "policy_query"
 

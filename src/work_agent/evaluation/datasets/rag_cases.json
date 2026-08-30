@@ -1,0 +1,95 @@
+{
+  "name": "RAG Retrieval Evaluation Cases v1",
+  "version": "1.0",
+  "description": "结合业务场景的检索评测集：正常召回 / 全局文档可见 / 权限拒 / 跨租户隔离。expected_documents 恒为必须出现；denied_documents 恒为必须被拒。文档为评测自导入的内存测试文档（EVAL*）。",
+  "cases": [
+    {
+      "id": "rag_normal_reimburse",
+      "scenario": "normal",
+      "query": "报销需要提交哪些发票和付款凭证？",
+      "expected_documents": ["EVAL财务报销制度.md"],
+      "denied_documents": [],
+      "tenant_id": "1",
+      "department": "财务部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_normal_purchase",
+      "scenario": "normal",
+      "query": "采购需要询价比价并签订采购合同吗？",
+      "expected_documents": ["EVAL采购审批制度.md"],
+      "denied_documents": [],
+      "tenant_id": "1",
+      "department": "采购部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_normal_leave",
+      "scenario": "normal",
+      "query": "请年假和病假分别需要什么条件？",
+      "expected_documents": ["EVAL请假审批制度.md"],
+      "denied_documents": [],
+      "tenant_id": "1",
+      "department": "财务部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_global_doc_tenant1",
+      "scenario": "global_doc",
+      "query": "日报要写哪些内容、几点之前提交？",
+      "expected_documents": ["EVAL日报管理制度.md"],
+      "denied_documents": [],
+      "tenant_id": "1",
+      "department": "采购部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_global_doc_tenant2",
+      "scenario": "global_doc",
+      "query": "日报要写哪些内容、几点之前提交？",
+      "expected_documents": ["EVAL日报管理制度.md"],
+      "denied_documents": [],
+      "tenant_id": "2",
+      "department": "市场部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_permission_deny_1",
+      "scenario": "permission_deny",
+      "query": "报销需要提交哪些发票和付款凭证？",
+      "expected_documents": [],
+      "denied_documents": ["EVAL财务报销制度.md"],
+      "tenant_id": "1",
+      "department": "研发部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_permission_deny_2",
+      "scenario": "permission_deny",
+      "query": "采购需要询价比价并签订采购合同吗？",
+      "expected_documents": [],
+      "denied_documents": ["EVAL采购审批制度.md"],
+      "tenant_id": "1",
+      "department": "财务部",
+      "role": "员工",
+      "top_k": 5
+    },
+    {
+      "id": "rag_cross_tenant_1",
+      "scenario": "cross_tenant",
+      "query": "采购需要询价比价并签订采购合同吗？",
+      "expected_documents": [],
+      "denied_documents": ["EVAL采购审批制度.md"],
+      "tenant_id": "2",
+      "department": "市场部",
+      "role": "员工",
+      "top_k": 5
+    }
+  ]
+}
