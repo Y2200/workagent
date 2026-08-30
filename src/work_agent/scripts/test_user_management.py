@@ -175,7 +175,6 @@ def test_create_super_admin():
         headers=headers,
         json={
             "username": "测试新建用户",
-            "password": "test123",
             "real_name": "张三",
             "department": "研发部",
             "role": "DEPARTMENT_ADMIN",
@@ -191,7 +190,9 @@ def test_create_super_admin():
 
     assert "DEPARTMENT_ADMIN" in body["roles"], body
 
-    # 密码可登录
+    assert body["tenant_id"] == "1", body
+
+    # 单公司模型：员工无 Web 密码 → 不能密码登录（只能企微）
     token_resp = client.post(
         "/api/admin/auth/login",
         json={
@@ -200,9 +201,9 @@ def test_create_super_admin():
         },
     )
 
-    assert token_resp.status_code == 200, token_resp.text
+    assert token_resp.status_code == 401, token_resp.text
 
-    print("Part 2 ✅ POST 创建（SUPER_ADMIN）：用户 + RBAC 角色 + 可登录 + real_name")
+    print("Part 2 ✅ POST 创建（SUPER_ADMIN）：用户 + 角色 + 租户1 + 无密码不可登录")
 
 
 # ======================
@@ -221,31 +222,17 @@ def test_create_validation():
         headers=headers,
         json={
             "username": "测试新建用户",
-            "password": "test123",
         },
     )
 
     assert resp.status_code == 409, resp.text
 
-    # ② 短密码 → 400
-    resp = client.post(
-        "/api/admin/users",
-        headers=headers,
-        json={
-            "username": "测试新建冲突",
-            "password": "123",
-        },
-    )
-
-    assert resp.status_code == 400, resp.text
-
-    # ③ wechat 冲突 → 409（测试新建用户 已绑定？先建一个绑定 wx_dup 的）
+    # ② wechat 冲突 → 409（先建一个绑定 wx_dup 的）
     client.post(
         "/api/admin/users",
         headers=headers,
         json={
             "username": "测试新建冲突",
-            "password": "test123",
             "wechat_user_id": "wx_dup",
         },
     )
@@ -255,14 +242,30 @@ def test_create_validation():
         headers=headers,
         json={
             "username": "测试新建冲突2",
-            "password": "test123",
             "wechat_user_id": "wx_dup",
         },
     )
 
     assert resp.status_code == 409, resp.text
 
-    print("Part 3 ✅ 创建校验（username 重复 409 / 短密码 400 / wechat 冲突 409）")
+    # ③ 用户名留空 → 自动生成（默认租户1）
+    resp = client.post(
+        "/api/admin/users",
+        headers=headers,
+        json={
+            "real_name": "自动生成用户名",
+            "department": "财务部",
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+
+    body = resp.json()
+
+    assert body["username"], "应自动生成用户名"
+    assert body["tenant_id"] == "1", body
+
+    print("Part 3 ✅ 创建校验（username 重复 409 / wechat 冲突 409 / 留空自动生成+默认租户1）")
 
 
 # ======================
@@ -439,11 +442,12 @@ def test_find_or_create():
     uid = "wx_find_or_create_test"
 
     # 只清理本用例的用户，不误删其他 Part 需要的用户
+    # 注意：自动建号 username = wx_{uid}，须按 wechat_user_id 定位
     db = SessionLocal()
 
     try:
 
-        existing = UserRepository().get_by_username(
+        existing = UserRepository().get_by_wechat_user_id(
             db,
             uid,
         )
@@ -469,6 +473,9 @@ def test_find_or_create():
     assert u1.id == u2.id, "两次建号应返回同一用户"
 
     assert u1.real_name == "自动建号用户", u1.real_name
+
+    # 单公司模型：自动建号落公司租户（default_tenant_id）
+    assert u1.tenant_id == settings.default_tenant_id, u1.tenant_id
 
     db = SessionLocal()
 
@@ -567,6 +574,81 @@ def test_bind_conflict():
     print("Part 8 ✅ bind 冲突回归 409")
 
 
+def test_delete_user():
+
+    """Part 9：删除用户（解绑后残留清理）"""
+
+    from work_agent.core.container import task_service
+    from work_agent.db.session import SessionLocal
+    from work_agent.repositories.user_repository import UserRepository
+
+    client = TestClient(app)
+
+    headers = _login_admin(client)
+
+    # ① 删自己 → 400
+    me = _user(settings.admin_username)
+    resp = client.delete(
+        f"/api/admin/users/{me.id}",
+        headers=headers,
+    )
+    assert resp.status_code == 400, resp.text
+
+    # ② 无任务用户 → 204 删除成功
+    resp = client.post(
+        "/api/admin/users",
+        headers=headers,
+        json={
+            "real_name": "待删除用户",
+            "department": "研发部",
+            "tenant_id": "1",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    del_user = resp.json()
+
+    resp = client.delete(
+        f"/api/admin/users/{del_user['id']}",
+        headers=headers,
+    )
+    assert resp.status_code == 204, resp.text
+
+    db = SessionLocal()
+    try:
+        assert UserRepository().get_by_id(db, del_user["id"]) is None, "应已删除"
+    finally:
+        db.close()
+
+    # ③ 有任务用户 → 409（保护数据完整性）
+    resp = client.post(
+        "/api/admin/users",
+        headers=headers,
+        json={
+            "real_name": "有任务用户",
+            "department": "研发部",
+            "tenant_id": "1",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    task_user = resp.json()
+
+    task_service.create_task(
+        creator_tenant_id="1",
+        title="删除守卫测试任务",
+        creator_id=me.id,
+        employee_id=task_user["id"],
+        department="研发部",
+    )
+
+    resp = client.delete(
+        f"/api/admin/users/{task_user['id']}",
+        headers=headers,
+    )
+    assert resp.status_code == 409, resp.text
+
+    print("Part 9 ✅ 删除用户（删自己 400 / 无任务 204 / 有任务 409）")
+
+
 def test():
 
     _setup()
@@ -586,6 +668,8 @@ def test():
     test_unique_index()
 
     test_bind_conflict()
+
+    test_delete_user()
 
 
 if __name__ == "__main__":

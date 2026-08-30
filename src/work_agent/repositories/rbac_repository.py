@@ -225,3 +225,23 @@ class RBACRepository:
         )
 
         db.commit()
+
+    def remove_user_roles(
+            self,
+            db: Session,
+            user_id: int
+    ) -> None:
+
+        """
+        删除用户全部角色关联（删除用户前清理）
+        """
+
+        (
+            db.query(UserRole)
+            .filter(
+                UserRole.user_id == user_id,
+            )
+            .delete()
+        )
+
+        db.commit()

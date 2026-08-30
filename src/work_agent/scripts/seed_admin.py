@@ -38,10 +38,10 @@ def seed_admin():
             ),
             department="管理层",
             role="管理员",
-            # 平台级管理员固定空租户：可见默认租户("")的登录失败/审计记录。
-            # 不用 settings.tenant_id——否则 seed 文档归属租户（如测试/部署配了
-            # TENANT_ID）时，admin 会跟着变成该租户，看不到默认租户的 login_failed
-            tenant_id=""
+            # 单公司模型：管理员归属公司租户（default_tenant_id）。
+            # 可见性不受影响：SUPER_ADMIN 角色 → _tenant_scope 平台全量。
+            # 不用 settings.tenant_id——避免测试/部署配了 TENANT_ID 时管理员跟着漂移。
+            tenant_id=settings.default_tenant_id
         )
 
         print(

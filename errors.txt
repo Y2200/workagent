@@ -875,3 +875,27 @@ Phase：CI 修复（push 079c9e0 后 test_permission_management 48/49 失败）
   - 测试夹具别改成过短单句：单 chunk 检索对 Milvus 读写一致性窗口更敏感
   - Milvus 权限更新类测试，断言前加有界重试吸收 read-after-write 可见延迟是合理的（有界、不掩真 bug）
 ====================
+时间：2026-08-31
+Phase：单公司用户模型（去密码 + 删除用户 + 默认公司租户1）
+问题（生产）：新企微绑定用户全落「平台」(空租户)，只有研发部管理员是租户1。
+根因：
+  1. config.wechat_default_tenant_id 默认 ""（平台）→ wechat/service._auto_create_user 用空租户建号
+  2. Web 建用户强制 username + 密码（api/schemas CreateUserRequest 必填），且超级管理员留空租户落平台
+修复（单公司模型，保留多租户能力）：
+  - config 新增 default_tenant_id="1"；_auto_create_user 用 wechat_default_tenant_id or default_tenant_id
+  - Web 建用户去密码：CreateUserRequest 删 password；内部存 AuthService.hash_password(token_urlsafe(32))
+    随机哈希（员工不能 Web 密码登录）；username 留空自动生成（wx_{id}/emp_{随机}）；tenant 留空默认 default_tenant_id
+  - 新增 DELETE /api/admin/users/{id}：删自己 400 / 删最后超管 400（UserRepository.count_super_admins）/
+    有任务（employee/creator）409（TaskRepository.count_by_creator 新增）/ 清 user_role（RBACService.remove_user_roles）
+    + 会话（ConversationRepository.delete_by_user）
+  - seed_admin 管理员 tenant 改 default_tenant_id（可见性不变：SUPER_ADMIN 角色 → _tenant_scope 全量）
+  - 迁移脚本 scripts/migrate_company_users.py（幂等：空租户用户 → default_tenant_id）
+经验：
+  - 单公司模型不改架构：保留 tenant_id/过滤/隔离，只统一默认归属，风险最小、后续好加多租户
+  - 员工无 Web 密码 = 存随机哈希，天然禁止密码登录（企微是唯一入口）
+  - 测试清理须按 wechat_user_id 定位（自动建号 username = wx_{uid}），按 username 会漏清残留
+验证：
+  - test_user_management 9/9（Part9 删除：删自己/无任务/有任务；自动用户名；默认租户1；auto-bind 租户1）
+  - test_wecom / test_enterprise_agent 绿；全量回归
+部署：服务器执行 python -m work_agent.scripts.migrate_company_users（存量平台用户 → 公司租户1）
+====================

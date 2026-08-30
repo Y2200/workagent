@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from work_agent.db.models import User
+from work_agent.db.models import User, UserRole, Role
 
 
 class UserRepository:
@@ -213,3 +213,42 @@ class UserRepository:
         db.refresh(user)
 
         return user
+
+    def delete(
+            self,
+            db: Session,
+            user: User
+    ) -> None:
+
+        """
+        删除用户（调用方需先清理 user_role/会话等关联）
+        """
+
+        db.delete(user)
+
+        db.commit()
+
+    def count_super_admins(
+            self,
+            db: Session,
+            exclude_id: int | None = None
+    ) -> int:
+
+        """
+        统计超级管理员数量（删除保护：不能删最后一个 SUPER_ADMIN）
+        """
+
+        query = (
+            db.query(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.code == "SUPER_ADMIN")
+        )
+
+        if exclude_id is not None:
+
+            query = query.filter(
+                User.id != exclude_id
+            )
+
+        return query.count()

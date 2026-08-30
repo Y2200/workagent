@@ -9,11 +9,14 @@
 范围：SUPER_ADMIN 全量；租户管理员仅本租户
 """
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from work_agent.api.deps import get_db, require_permission
+from work_agent.config import settings
 from work_agent.api.schemas import (
     CreateUserRequest,
     UpdateUserRequest,
@@ -33,6 +36,46 @@ router = APIRouter(
     prefix="/api/admin",
     tags=["admin"],
 )
+
+
+def _generate_username(
+        repo: UserRepository,
+        db: Session,
+        wechat_user_id: str
+) -> str:
+
+    """
+    自动生成唯一用户名（单公司模型：员工无需手动起登录名）
+
+    有企微 → wx_{wechat_user_id}；否则 emp_{随机}。撞名则重试。
+    """
+
+    if wechat_user_id:
+
+        candidate = f"wx_{wechat_user_id}"
+
+        if not repo.get_by_username(
+                db,
+                candidate,
+        ):
+
+            return candidate
+
+    for _ in range(5):
+
+        candidate = f"emp_{secrets.token_hex(3)}"
+
+        if not repo.get_by_username(
+                db,
+                candidate,
+        ):
+
+            return candidate
+
+    # 兜底：时间戳保证唯一
+    import time
+
+    return f"emp_{int(time.time() * 1000)}"
 
 
 def _is_super_admin(
@@ -220,14 +263,15 @@ def create_user(
 
     repo = UserRepository()
 
-    username = payload.username.strip()
-
-    if not username:
-
-        raise HTTPException(
-            status_code=400,
-            detail="用户名不能为空",
+    # 用户名可选：留空自动生成唯一（有企微用 wx_{id}，否则 emp_{随机}）
+    username = (
+        payload.username.strip()
+        or _generate_username(
+            repo,
+            db,
+            payload.wechat_user_id.strip(),
         )
+    )
 
     if repo.get_by_username(
             db,
@@ -237,13 +281,6 @@ def create_user(
         raise HTTPException(
             status_code=409,
             detail=f"用户名已存在: {username}",
-        )
-
-    if not payload.password or len(payload.password) < 6:
-
-        raise HTTPException(
-            status_code=400,
-            detail="密码至少 6 位",
         )
 
     role_code = (
@@ -263,7 +300,11 @@ def create_user(
             current_user,
     ):
 
-        tenant_id = payload.tenant_id.strip()
+        # 单公司模型：租户留空默认公司租户（default_tenant_id）
+        tenant_id = (
+            payload.tenant_id.strip()
+            or settings.default_tenant_id
+        )
 
     else:
 
@@ -305,8 +346,9 @@ def create_user(
     user = repo.create(
         db,
         username=username,
+        # 单公司模型：员工无 Web 密码，存随机哈希（只能企微访问）
         password_hash=AuthService.hash_password(
-            payload.password
+            secrets.token_urlsafe(32)
         ),
         department=payload.department.strip(),
         role=ROLE_DISPLAY[role_code],
@@ -648,3 +690,125 @@ def unbind_wechat(
         db,
         target,
     )
+
+
+@router.delete(
+    "/users/{user_id}",
+    status_code=204,
+)
+def delete_user(
+        user_id: int,
+        current_user: User = Depends(
+            require_permission("user:manage")
+        ),
+        db: Session = Depends(get_db),
+):
+
+    """
+    删除用户（解绑后残留记录清理）
+
+    守卫：
+    - 不能删当前登录账号
+    - 不能删最后一个超级管理员
+    - 有任务（作为执行人/创建者）→ 409 保护数据完整性
+    清理关联：user_role + 会话/消息；日志/审计历史保留（仅存 user_id）。
+    """
+
+    repo = UserRepository()
+
+    target = repo.get_by_id(
+        db,
+        user_id,
+    )
+
+    if not target:
+
+        raise HTTPException(
+            status_code=404,
+            detail="用户不存在"
+        )
+
+    if target.id == current_user.id:
+
+        raise HTTPException(
+            status_code=400,
+            detail="不能删除当前登录账号"
+        )
+
+    if not _can_manage(
+            db,
+            current_user,
+            target,
+    ):
+
+        raise HTTPException(
+            status_code=403,
+            detail="无权管理该用户"
+        )
+
+    # 最后超级管理员保护
+    if "SUPER_ADMIN" in RBACService().get_role_codes(
+            db,
+            target.id,
+    ):
+
+        if repo.count_super_admins(
+                db,
+                exclude_id=target.id,
+        ) <= 0:
+
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除最后一个超级管理员",
+            )
+
+    # 有任务 → 保护数据完整性
+    if TaskRepository().count_by_employee(
+            db,
+            target.id,
+    ) > 0:
+
+        raise HTTPException(
+            status_code=409,
+            detail="该用户有任务记录，不能删除（可先取消/完成其任务）",
+        )
+
+    if TaskRepository().count_by_creator(
+            db,
+            target.id,
+    ) > 0:
+
+        raise HTTPException(
+            status_code=409,
+            detail="该用户创建过任务，不能删除",
+        )
+
+    # 清理关联：角色 + 会话
+    RBACService().remove_user_roles(
+        db,
+        target.id,
+    )
+
+    from work_agent.repositories.conversation_repository import (
+        ConversationRepository,
+    )
+
+    ConversationRepository().delete_by_user(
+        db,
+        target.id,
+    )
+
+    repo.delete(
+        db,
+        target,
+    )
+
+    AuditService().log_operation(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="user.delete",
+        target_type="user",
+        target_id=str(user_id),
+    )
+
+    db.commit()
