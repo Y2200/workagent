@@ -12,6 +12,19 @@
 
 **✅ CI/CD 流水线已全自动跑通**：45/45 测试全绿 + SSH 部署 job 成功（deploy.sh master：git pull → docker build → 幂等迁移 → 前端 → nginx → healthcheck）。之后每次 push master 即自动测试+上线。
 
+## 最新（2026-08-31）：企微语音识别（阿里云 ASR 一句话识别）
+- **能力**：员工在企微发语音 → 阿里云 NLS 一句话识别 → 文本 → 走现有 Agent 问答链路
+- **改动**：
+  - `wechat/parser.py`：voice 消息取 `MediaId`/`Format`；`wechat/client.py` 加 `get_media`（media/get 下载）
+  - `wechat/asr.py`（新）：`AlibabaASR`——阿里云 RPC 签名 GetToken（缓存24h）+ `nls-gateway 一句话识别`（wav 字节直传）+ **amr→wav（ffmpeg）**；纯 requests 不引 SDK
+  - `wechat/service.py`：`process_message` 加 voice 分支（下载→转写→文本→原样走 Runtime）；未开启/失败给明确提示
+  - 配置：`asr_enabled`/`aliyun_nls_appkey`/`aliyun_access_key_id`/`aliyun_access_key_secret`/`asr_region`(cn-shanghai)/`asr_sample_rate`(16000)；`.env.example` 补
+  - `Dockerfile` 加 ffmpeg
+- **方案取舍**：用「一句话识别」而非「录音文件转写」——后者需公网音频 URL，而生产 MinIO 内网隔离；一句话识别音频直传更契合
+- **测试**：`test_voice_asr.py`（签名/识别 mock/语音→Runtime/未开启提示）；`test_wecom` 回归绿
+- **部署**：服务器 `.env` 已配 5 个 ASR 变量（用户已操作）；重建镜像含 ffmpeg 后生效
+- **下一步（挂起）**：数据清洗 + 扫描 PDF OCR（与语音共用 ffmpeg/RapidOCR 方向）
+
 ## 最新（2026-08-31）：单公司用户模型（去密码 + 删除用户 + 默认公司租户1）
 - **痛点**：新企微绑定用户全落「平台」(空租户)，只有研发部管理员是租户1（根因 `wechat_default_tenant_id=""`）；Web 建员工强制用户名+密码繁琐；解绑后记录无法删除；超级管理员"跨公司"归属语义别扭
 - **改动**：

@@ -21,11 +21,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 系统依赖（最小）
+# 系统依赖（最小 + ffmpeg：企微语音 amr→wav 转阿里云 ASR）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # torch CPU 先行安装（与开发环境一致；后续 pip 解析到已满足，不再拉取 CUDA 版）

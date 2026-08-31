@@ -620,20 +620,41 @@ def test():
 
     llm13 = _FakeLLM()
 
-    result13 = AgentLoop(
-        llm=llm13,
-        config_service=_FakeConfig({"agent.loop.max_duration_seconds": 1e-6}),
-    ).run(
-        context=_ctx(user_a),
-        plan=_knowledge_plan(),
-        message="对比报销和请假制度",
-    )
+    # Windows time.monotonic 分辨率 ~15.6ms：1e-6 超时被取整成 0.0 → 偶发不触发。
+    # Mock 时钟每次调用推进 0.1s，保证 elapsed 恒 > max_duration → 确定性触发。
+    import time as _time
+
+    from unittest import mock as _mock
+
+    _real_mono = _time.monotonic
+
+    def _advancing():
+
+        _advancing.t += 0.1
+
+        return _advancing.t
+
+    _advancing.t = _real_mono()
+
+    with _mock.patch(
+        "work_agent.agent.loop.time.monotonic",
+        side_effect=_advancing,
+    ):
+
+        result13 = AgentLoop(
+            llm=llm13,
+            config_service=_FakeConfig({"agent.loop.max_duration_seconds": 1e-6}),
+        ).run(
+            context=_ctx(user_a),
+            plan=_knowledge_plan(),
+            message="对比报销和请假制度",
+        )
 
     assert result13.tools_called == ["knowledge_tool"], result13.tools_called
 
     assert "超出预算或超时" in result13.response, result13.response
 
-    print("场景13 ✅ 时间熔断：超时 → 兜底")
+    print("场景13 ✅ 时间熔断：超时 → 兜底（mock 时钟确定性）")
 
     # ======================
     # 场景14：Guardrail 重复调用检测

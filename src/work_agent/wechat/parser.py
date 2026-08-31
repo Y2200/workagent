@@ -43,6 +43,17 @@ def parse_wechat_xml(
         ""
     )
 
+    # 语音消息：MediaId + Format（amr）用于下载转写
+    media_id = root.findtext(
+        "MediaId",
+        "",
+    )
+
+    format_name = root.findtext(
+        "Format",
+        "",
+    )
+
 
     return {
 
@@ -55,5 +66,9 @@ def parse_wechat_xml(
         "msg_id": msg_id,
 
         "create_time": create_time,
+
+        "media_id": media_id,
+
+        "format": format_name,
 
     }

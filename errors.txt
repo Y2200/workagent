@@ -933,3 +933,45 @@ Phase：任务截止日期提取补全（尽快/X月X日/YYYY-MM-DD）
 验证：各日期格式实测解析正常（明天/后天/下周X/X天后/尽快/12月31日/2026-12-31）；
      test_enterprise_agent / test_task_flow / test_validator 绿；全量回归
 ====================
+时间：2026-08-31
+Phase：企微语音识别（阿里云 ASR 一句话识别）
+能力：员工企微发语音 → 阿里云 NLS → 文本 → 现有 Agent 问答链路（Agent 本身纯文本，语音只在入口转文本）。
+实现要点：
+  - wechat/parser.py 取 voice 的 MediaId/Format；client.get_media（/cgi-bin/media/get）下载 amr
+  - wechat/asr.py（纯 requests，不引 SDK）：
+      * GetToken：阿里云 RPC V1 签名（HMAC-SHA1，RFC3986 百分号编码，_pct_encode safe='~'，
+        空格 %20 非 +；签名后整串再 encode 一次进 stringToSign），token 缓存 24h
+      * 一句话识别：POST nls-gateway-{region}.aliyuncs.com/stream/v1/asr，header X-NLS-Token，
+        body=wav；status=20000000 → result
+      * amr→wav：ffmpeg（-ar 16000 -ac 1），ffmpeg 缺失 → RuntimeError 明确提示
+  - 方案取舍：用「一句话识别」而非「录音文件转写」——转写要公网可访问的 file_link，
+    生产 MinIO 内网隔离（端口零暴露加固）不满足；一句话识别音频直传更契合
+  - service.py process_message 加 voice 分支：转写失败/未开启给明确提示，不静默
+经验：
+  - 企微语音是 AMR（≤60s），阿里云一句话识别只要 pcm/wav → 必须 ffmpeg 转换（Docker 加依赖）
+  - 阿里云 RPC 签名坑：最终请求 query 要自己手动百分号编码拼（不能靠 requests params 再编码，
+    否则 Signature 里的 % 会被二次编码）；token 域名 nls-meta.{region} / gateway nls-gateway-{region}
+验证：
+  - test_voice_asr.py（签名确定性/识别成功失败 mock/语音→Runtime 内容=转写文本/未开启提示）
+  - test_wecom 回归绿；全量回归
+部署：服务器 .env 已配 ASR_ENABLED/REGION/APPKEY/AK/SK（用户已操作）；重建镜像（含 ffmpeg）后生效
+====================
+时间：2026-08-31
+Phase：全量回归 2 个既有 flake 根因修复（test_agent_loop 场景13 / test_permission 场景3）
+问题1：test_agent_loop 场景13（时间熔断）偶发失败，got "（FakeLLM 兜底回答）"。
+根因：Windows time.monotonic() 分辨率 ~15.6ms；max_duration_seconds=1e-6 太小，
+     工具执行 < 一个时钟滴答时 elapsed 取整为 0.0 → 0.0 > 1e-6 = False → 超时不触发，
+     FakeLLM 首轮兜底回答被当最终答案返回。非负载问题（单跑 2/3 也挂）。
+修复：场景13 mock work_agent.agent.loop.time.monotonic 每次调用 +0.1s，elapsed 恒 > max_duration → 确定性。
+问题2：test_permission 场景3（企业B员工查企业A制度=0结果）偶发失败，返回了种子文档「企业综合管理制度.md」。
+根因：seed_knowledge_library 用 settings.tenant_id（本地空）→ 平台(空租户)文档全局可见；
+     test 的 cleanup_tenant_data() 只清租户1/2 不清平台；场景3 断言 len==0 假设无平台文档，
+     种子文档相似度临界 → Milvus 状态变化时被检索到。
+修复：场景3 断言改为「企业A的 doc_a_id 不出现在B的结果」= 真实租户隔离意图，
+     不受种子平台文档影响（doc_a_id 由 _upload_test_documents() 返回，test() 需接收返回值）。
+经验：
+  - 断言前想清楚"真实意图"：租户隔离断言具体文档 id 而非 len==0
+  - 时间类 guardrail 测试勿用小于 OS 时钟分辨率的超时值；要确定性就 mock 时钟
+  - 测试清理要考虑平台(空租户)残留，不只清业务租户
+验证：test_agent_loop 5连跑全过；test_permission 3连跑全过；全量回归
+====================

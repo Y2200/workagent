@@ -57,6 +57,30 @@ class Settings(BaseSettings):
     default_tenant_id: str = "1"
 
     # ======================
+    # 语音识别（企微语音 → 阿里云 NLS 一句话识别）
+    # ======================
+
+    # 是否启用语音识别（关则企微语音消息提示"未开启"）
+    asr_enabled: bool = False
+
+    # 阿里云智能语音交互 AppKey（NLS 控制台 → 项目管理）
+    aliyun_nls_appkey: str = ""
+
+    # 阿里云 AccessKey（RAM 控制台创建；建议子账号）
+    aliyun_access_key_id: str = ""
+
+    aliyun_access_key_secret: str = ""
+
+    # 一句话识别地域（如 cn-shanghai；nls-gateway-cn-{region}.aliyuncs.com）
+    asr_region: str = "cn-shanghai"
+
+    # 采样率（企微语音 amr → 转 wav 16k mono）
+    asr_sample_rate: int = 16000
+
+    # 语音最大时长（秒；一句话识别上限 60）
+    asr_max_seconds: int = 60
+
+    # ======================
     # 大模型
     # ======================
 

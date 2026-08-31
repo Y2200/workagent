@@ -216,6 +216,53 @@ class WeComClient:
         return result
 
     # ======================
+    # 媒体下载（语音识别用）
+    # ======================
+
+    def get_media(
+            self,
+            media_id: str
+    ) -> bytes:
+
+        """
+        下载企微媒体文件（语音消息 MediaId → amr 音频字节）
+
+        企微 media/get 成功时直接返回文件二进制；失败返回 JSON errcode。
+        """
+
+        token = self.get_access_token()
+
+        response = requests.get(
+            f"{_BASE}/media/get",
+            params={
+                "access_token": token,
+                "media_id": media_id,
+            },
+            timeout=20,
+        )
+
+        content_type = response.headers.get(
+            "content-type",
+            "",
+        )
+
+        # JSON 响应 = 错误（如媒体已过期）
+        if "application/json" in content_type:
+
+            data = response.json()
+
+            logger.warning(
+                "media/get 失败: %s",
+                data,
+            )
+
+            raise Exception(
+                f"下载媒体失败: {data}"
+            )
+
+        return response.content
+
+    # ======================
     # 用户资料（自动建号用）
     # ======================
 
