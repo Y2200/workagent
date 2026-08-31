@@ -807,6 +807,64 @@ def test_h_department_members():
     print("✓ PartH 查看本部门员工（路由 → plan → Policy → 姓名格式化）")
 
 
+def test_h2_command_not_hijacked():
+    """Part H2：命令词不被当作员工姓名/任务标题（生产回归）"""
+    from work_agent.agent.router.intent_router import IntentRouter
+    from work_agent.agent.tools.task_tool import TaskTool
+
+    router = IntentRouter()
+
+    # 1. 内置命令 → query_department_members（确定性，不依赖 LLM/草稿）
+    for cmd in ("查看本部门员工", "查看名单", "查看员工", "员工名单", "看名单", "部门成员"):
+        r = router.route(cmd, user_context={"user_id": 1, "tenant_id": "1"})
+        assert r.intent == "query_department_members", (cmd, r.intent)
+        assert r.tool == "user_tool", (cmd, r.tool)
+
+    # 任务语境不误判（"查看张三的任务" → 员工任务）
+    r_task = router.route("查看张三的任务", user_context={"user_id": 1, "tenant_id": "1"})
+    assert r_task.intent == "query_employee_task", r_task.intent
+
+    # 2. 有在途未完成草稿时，命令仍不被劫持为 create/姓名
+    creator = _db_user("dept_admin_A")
+    assert creator, "缺少 dept_admin_A"
+
+    ctx = _ctx(
+        permissions={"task:view", "task:create"},
+        role_codes={"DEPARTMENT_ADMIN"},
+        tenant_id="1", department="研发部",
+    )
+    ctx.user_id = creator.id
+
+    tool = TaskTool()
+
+    try:
+        # 造一个缺执行人的在途草稿
+        r1 = tool.execute(
+            context=ctx,
+            action="create",
+            content="发布一个客户系统测试任务",
+        )
+        assert r1["status"] == "need_info", r1
+
+        # 命令 → 仍路由到部门员工（不被 supplement override 当姓名劫持）
+        r2 = router.route(
+            "查看本部门员工",
+            user_context={"user_id": creator.id, "tenant_id": "1"},
+        )
+        assert r2.intent == "query_department_members", r2.intent
+
+        # 纯姓名 → 仍作补充回复（create 合并续补）
+        r3 = router.route(
+            "张三",
+            user_context={"user_id": creator.id, "tenant_id": "1"},
+        )
+        assert r3.intent == "create_task", r3.intent
+    finally:
+        _cleanup_pending_creates()
+
+    print("✓ PartH2 命令词路由（查看名单/员工/本部门员工 不当作姓名/标题）")
+
+
 def test_f_intent_planning():
     """Part F：task_create 意图路由 + plan"""
     from work_agent.agent.router.intent_router import IntentRouter
@@ -883,6 +941,7 @@ def test():
     test_e4_supplement_routing()
     test_f_intent_planning()
     test_h_department_members()
+    test_h2_command_not_hijacked()
     print("Enterprise Agent 测试全部通过")
 
 

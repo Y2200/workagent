@@ -22,6 +22,7 @@
   - 前端：建用户表单去密码项、用户名可选、租户下拉默认1、删除按钮
   - 迁移脚本 `scripts/migrate_company_users.py`（幂等）：存量空租户用户 → 公司租户1
 - **保留多租户能力**：不删 tenant_id 列/过滤/隔离逻辑；部门级文档访问控制（visibility + access + PermissionFilter）保持不变
+- **命令路由修复（生产回归）**：补充执行人 override 会劫持「查看本部门员工/查看名单」当姓名 → 新增 `_member_query_override`（route() 最前、先于 LLM/补充 override）确定性路由部门员工工具；补充 override + preview 候选姓名均排除命令词；`_fallback` 规则扩充。测试 `test_enterprise_agent` Part H2
 - **测试**：test_user_management 9/9（含新增 Part9 删除、自动用户名、默认租户1）；test_wecom/test_enterprise_agent 绿
 - **部署**：服务器跑 `python -m work_agent.scripts.migrate_company_users`
 
