@@ -907,7 +907,8 @@ class TaskService:
             pending is not None
             and len(candidate) <= 12
             and not re.search(
-                r"任务|发布|安排|创建|新增|分派|指派|做|完成",
+                r"任务|发布|安排|创建|新增|分派|指派|做|完成"
+                r"|查看|查询|看看|名单|部门|有哪些|谁|怎么|如何|成员",
                 candidate,
             )
         )

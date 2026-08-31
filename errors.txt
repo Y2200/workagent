@@ -899,3 +899,26 @@ Phase：单公司用户模型（去密码 + 删除用户 + 默认公司租户1�
   - test_wecom / test_enterprise_agent 绿；全量回归
 部署：服务器执行 python -m work_agent.scripts.migrate_company_users（存量平台用户 → 公司租户1）
 ====================
+时间：2026-08-31
+Phase：命令词被当员工姓名/任务标题（生产企微回归修复）
+问题（生产）：经理发「查看本部门员工」「查看名单」「查看员工」→ 全被回「未找到员工『XX』」，
+     且「查看名单」被当成任务标题存入草稿（后续「王红霞」→ 任务：查看名单 执行人：王红霞，内容/日期错乱）。
+根因：
+  1. intent_router._create_supplement_override（多轮补充回复）在 route() 最前，**劫持一切短消息**——
+     只要在途草稿未完成，「查看本部门员工」等命令也被当作执行人姓名候选 → create → 姓名查库。
+  2. 「查看名单」「查看员工」不在部门成员命令词表里，LLM 又可能判成 create_task → 命令文本被存成标题。
+修复：
+  - intent_router 新增 _member_query_override + MEMBER_QUERY_PATTERNS：在 route() 最前、先于补充 override，
+    命中「查看本部门员工/查看名单/查看员工/员工名单/部门成员…」→ 确定性路由 user_tool.list_department；
+    任务语境（含任务/进度/完成）排除
+  - _create_supplement_override 首行加命令排除（_member_query_override 命中 → None，不劫持）
+  - preview_create_task 候选姓名路径排除命令词（查看/查询/名单/部门/成员…，纵深防御）
+  - _fallback 部门成员规则扩充（查看名单/查看员工/看名单/部门名单…）
+经验：
+  - 多轮补充 override 必须在「内置命令路由」之后，否则命令被当姓名
+  - 命令路由要确定性、放最前（先于 LLM 和草稿状态判断），才能保证命令永远不被当数据
+  - 排除词别含「员工」（测试用户名如 A研发员工 含"员工"，会误伤）；用 查看/查询/名单/部门/成员 等动词名词
+验证：
+  - test_enterprise_agent 新增 Part H2（命令路由不劫持 + 草稿存在时命令仍走部门员工 + 纯姓名仍作补充）全绿
+  - test_intent_router / test_enterprise_agent 全绿；全量回归
+====================

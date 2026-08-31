@@ -83,6 +83,16 @@ class IntentRouter:
                 reasoning="任务上下文匹配",
             )
 
+        # 内置命令：查看本部门员工（确定性，先于 LLM / 补充回复，
+        # 避免「查看本部门员工」「查看名单」被当员工姓名/任务标题处理）
+        member_query = self._member_query_override(
+            message,
+        )
+
+        if member_query:
+
+            return member_query
+
         # 任务创建补充回复：在途草稿未完成（缺执行人/任务名）时，
         # 短消息（如补执行人回「张三」）强制路由到 create，使其合并续补
         supplement = self._create_supplement_override(
@@ -285,6 +295,67 @@ class IntentRouter:
 
             return None
 
+    MEMBER_QUERY_PATTERNS = [
+        "查看本部门员工",
+        "查看部门员工",
+        "查看员工",
+        "看员工",
+        "查看名单",
+        "看名单",
+        "查看成员",
+        "员工名单",
+        "部门名单",
+        "部门成员",
+        "部门有哪些员工",
+        "部门有哪些人",
+        "有哪些员工",
+        "本部门都有谁",
+        "部门都有谁",
+        "部门的人",
+        "同事名单",
+    ]
+
+    @staticmethod
+    def _member_query_override(
+            message: str
+    ) -> IntentResult | None:
+
+        """
+        内置命令：查看本部门员工（确定性路由）
+
+        命中「查看本部门员工 / 查看名单 / 查看员工 / 员工名单」等 → 直接走
+        user_tool.list_department，不把命令文本当员工姓名/任务标题。
+        任务语境（含"任务/进度/完成"）排除，交给任务路由。
+        """
+
+        msg = message.strip()
+
+        if not msg:
+
+            return None
+
+        if any(
+            kw in msg
+            for kw in ("任务", "进度", "完成")
+        ):
+
+            return None
+
+        for pattern in IntentRouter.MEMBER_QUERY_PATTERNS:
+
+            if pattern in msg:
+
+                return IntentResult(
+                    intent=IntentType.QUERY_DEPARTMENT_MEMBERS,
+                    confidence=0.95,
+                    need_tool=True,
+                    tool="user_tool",
+                    entities={"action": "list_department"},
+                    reasoning="内置命令：查看本部门员工",
+                )
+
+        return None
+
     @staticmethod
     def _create_supplement_override(
             message: str,
@@ -302,6 +373,11 @@ class IntentRouter:
         msg = message.strip()
 
         if not msg or len(msg) > 12:
+
+            return None
+
+        # 内置命令（查看本部门员工/名单等）不当作姓名补充
+        if IntentRouter._member_query_override(message):
 
             return None
 
@@ -563,6 +639,12 @@ class IntentRouter:
                 or "部门都有谁" in msg
                 or "部门的人" in msg
                 or "同事名单" in msg
+                or "查看员工" in msg
+                or "看员工" in msg
+                or "查看名单" in msg
+                or "看名单" in msg
+                or "查看成员" in msg
+                or "部门名单" in msg
             )
         ):
 
