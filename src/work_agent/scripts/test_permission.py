@@ -134,7 +134,7 @@ def test():
 
     seed_tenants()
 
-    _upload_test_documents()
+    doc_a_id, doc_b_id = _upload_test_documents()
 
     db = SessionLocal()
 
@@ -236,10 +236,16 @@ def test():
         for item in r3
     ]
 
-    assert len(r3) == 0, f"场景3失败: {s3_sources}"
+    # 真实意图：企业A的制度文档对企业B员工不可见（租户隔离）。
+    # 不断言 len==0——种子知识库平台(空租户)文档全局可见，可能被检索到，
+    # 那些不是本测试的越权场景；只校验企业A文档不出现在B的结果里。
+    assert doc_a_id not in {
+        item.get("document_id")
+        for item in r3
+    }, f"场景3失败: {s3_sources}"
 
     print(
-        f"场景3 ✅ 企业B员工检索企业A制度为0结果"
+        f"场景3 ✅ 企业B员工检索企业A制度为0结果（租户隔离）"
     )
 
     # 清理测试文档

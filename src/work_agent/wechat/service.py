@@ -144,6 +144,53 @@ def _resolve_user(
         db.close()
 
 
+def _transcribe_voice(
+        message: dict
+):
+
+    """
+    企微语音消息 → 文本（阿里云 ASR）
+
+    返回 (text, error)；error 非空表示失败，text 为空。
+    """
+
+    if not settings.asr_enabled:
+
+        return "", "语音识别未开启，请改用文字输入"
+
+    media_id = message.get(
+        "media_id",
+        "",
+    )
+
+    if not media_id:
+
+        return "", "未获取到语音内容，请重试"
+
+    try:
+
+        from work_agent.wechat.asr import asr_service
+
+        text = asr_service.transcribe_media(
+            media_id
+        )
+
+    except Exception as exc:
+
+        logger.error(
+            "语音识别异常: %s",
+            exc,
+        )
+
+        return "", "语音识别失败，请重试或改用文字输入"
+
+    if not text:
+
+        return "", "未能识别语音内容，请重试或改用文字输入"
+
+    return text, ""
+
+
 def process_message(
     message: dict
 ):
@@ -171,6 +218,31 @@ def process_message(
     started = time.monotonic()
 
     try:
+
+        # 语音消息 → ASR 转文字 → 原样走文本链路
+        if message.get("msg_type") == "voice":
+
+            transcribed, err = _transcribe_voice(
+                message
+            )
+
+            if err:
+
+                logger.info(
+                    "语音消息处理失败: %s",
+                    err,
+                )
+
+                return {
+                    "error": err,
+                    "user": message.get(
+                        "user",
+                        "",
+                    ),
+                    "message": err,
+                }
+
+            message["content"] = transcribed
 
         cleaned = clean_message(
             message
