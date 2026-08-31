@@ -1624,9 +1624,14 @@ class TaskService:
 
         employee_name = TaskService._extract_employee_name(content)
 
-        # 截止：匹配「X天后/下周五/明天/今天」
+        # 截止：匹配「今天/明天/后天/下周X/X天后/尽快/X月X日/YYYY-MM-DD」
         match = re.search(
-            r"(?:下?周[一二三四五六日天]|今[天日]|明[天日]|后[天日]|\d+\s*天后?)",
+            r"(?:下?周[一二三四五六日天]"
+            r"|今[天日]|明[天日]|后[天日]"
+            r"|\d+\s*天后?"
+            r"|尽快|越快越好"
+            r"|\d{1,2}月\d{1,2}[日号]"
+            r"|\d{4}-\d{1,2}-\d{1,2})",
             content,
         )
 
@@ -1659,7 +1664,7 @@ class TaskService:
                 "",
             )
 
-        title_text = title_text.strip(" ，,。！!的:")
+        title_text = title_text.strip(" ，,。！!的::：前")
 
         if title_text:
             title = title_text[:50]
