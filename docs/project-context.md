@@ -23,6 +23,10 @@
 - **方案取舍**：用「一句话识别」而非「录音文件转写」——后者需公网音频 URL，而生产 MinIO 内网隔离；一句话识别音频直传更契合
 - **测试**：`test_voice_asr.py`（签名/识别 mock/语音→Runtime/未开启提示）；`test_wecom` 回归绿
 - **部署**：服务器 `.env` 已配 5 个 ASR 变量（用户已操作）；重建镜像含 ffmpeg 后生效
+- **⚠️ 待办（用户指出更简方案）**：企微自建应用「接收消息」开启**语音识别**后，语音消息回调自带 `Recognition` 字段（企微云端已转好文字），**无需阿里云 ASR / ffmpeg**。
+  - 下一步：`parser.py` 提取 `Recognition` → `service._transcribe_voice` 优先用 `Recognition`，阿里云 ASR 降为兜底（`Recognition` 为空且 `asr_enabled` 才走）
+  - 用户需在企微管理后台应用配置开「语音识别」开关
+  - 状态：**parser.py 未改完，用户中断，待下次继续**
 - **下一步（挂起）**：数据清洗 + 扫描 PDF OCR（与语音共用 ffmpeg/RapidOCR 方向）
 
 ## 最新（2026-08-31）：单公司用户模型（去密码 + 删除用户 + 默认公司租户1）
@@ -50,7 +54,7 @@
 - **提示词**：intent_router v1.1→1.2（新增意图）；**部署后需 `POST /api/admin/prompts/seed` 重播种**，否则线上 LLM 意图路由不认「查看本部门员工」
 - **测试**：test_enterprise_agent 增 Part E3（多轮合并流）/E4（补充路由）/H（部门员工路由+Policy+姓名格式化），Part B 改（USER 拒 list_department）；test_prompt_manager/governance 硬编码版本号改动态（intent_router 基线 1.2）
 - **验证**：定向 8 套件全绿 + 全量回归 49/49
-- **CI 补丁**：push 后 CI 48/49（test_permission_management 场景3 user_ids 瞬态竞态，本地不可复现）→ 夹具改回真实长度 + `_search_allow` 有界重试（≤15s 吸收 Milvus 写入后读可见延迟）→ 5 连跑全绿，重推后 CI 验证（详见 errors.txt 2026-08-30 二条）
+- **CI 补丁**：push 后 CI 48/49（test_permission_management 场景3 user_ids 瞬态竞态，本地不可复现）→ 夹具改回真实长度 + `_search_allow` 有界重试（≤15s 吸收 Milvus 写入后读可见延迟）→ 5 连跑全绿，重推后 CI 验证（详见 docs/debug-record.md 2026-08-30 二条）
 
 ## 最新（2026-08-29）：生产迁移阿里云香港 + 审计可见性修复 + CI 加固
 - **生产迁移**：腾讯云 → 阿里云香港 ECS 2C4G（免费试用 3 个月），DNS 已切换，部署成功，企微端到端可用
@@ -109,11 +113,11 @@
 - **CI env 关键值**：`PYTHONPATH=src`（src-layout）；DATABASE_URL/MILVUS_URI/MINIO 指向 localhost（dev compose 凭据 minioadmin）；`DOUBAO_API_KEY`=Secret `LLM_API_KEY`；`JWT_SECRET`（非空）/`ADMIN_USERNAME=admin`/`ADMIN_PASSWORD=admin123`；`TENANT_ID=1`
 - **GitHub Secrets（4 个，用户已配）**：`DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_SSH_KEY`/`LLM_API_KEY`（详见 deploy/README.md 第八节）
 - **本地 git 环境**：SSH remote 切回 HTTPS→已改回 SSH（个人密钥 `~/.ssh/id_ed25519_github` 注册 GitHub，`~/.ssh/config` 指向它；部署密钥 `id_ed25519`(github-actions) 仅用于服务器，两者分离）
-- **修复的 CI 适配问题**（逐条详见 errors.txt 2026-08-21 四条记录）：空库 UndefinedTable→runner 预建 schema；conversation_message 模型重复索引→移除列级 index=True；JWT 空 key→CI env 补 JWT_SECRET；prompt 版本 1.0→1.1 与评测分布断言过时；`search_with_meta` denied 语义 `len(results)==0`→`<len(candidates)`（对齐 docstring）；seed 文档 roles 去通用"员工"（财务报销/采购审批，部门隔离）；seed_admin 平台管理员固定租户 `""`（避免 TENANT_ID 破坏默认租户可见审计）
+- **修复的 CI 适配问题**（逐条详见 docs/debug-record.md 2026-08-21 四条记录）：空库 UndefinedTable→runner 预建 schema；conversation_message 模型重复索引→移除列级 index=True；JWT 空 key→CI env 补 JWT_SECRET；prompt 版本 1.0→1.1 与评测分布断言过时；`search_with_meta` denied 语义 `len(results)==0`→`<len(candidates)`（对齐 docstring）；seed 文档 roles 去通用"员工"（财务报销/采购审批，部门隔离）；seed_admin 平台管理员固定租户 `""`（避免 TENANT_ID 破坏默认租户可见审计）
 - **测试进度**：6/45 → 21/45 → 38/45 → 43/45 → **45/45 全绿**（最终修复：seed_admin 平台管理员固定租户""，避免 TENANT_ID=1 破坏默认租户可见审计）
 - **验证**：test 全绿 → deploy job SSH 上服务器执行 `deploy.sh master` → **部署成功**，生产已自动更新
 
-## 最新（2026-08-16→17）：企业任务型 Agent 升级（6-4.txt 路线 Phase 7A-12）
+## 最新（2026-08-16→17）：企业任务型 Agent 升级（docs/phase-6-4-enterprise-task-agent.md 路线 Phase 7A-12）
 - **核心原则**：不是通用聊天 Agent，而是**企业任务执行 Agent**（Manager/Employee/System 三角色）
 - **Phase 7A 企业任务决策层**：`agent/policy.py`（意图级前置 RBAC，双保险）+ RBAC +7 权限码（task:submit/view_employee/remind/email:send/policy:view/system:scan/report:send）+ 8 任务意图拆分（query_my/query_employee/create/submit/remind/summary/policy_query/unknown）+ Planner 结构化 command + summary
 - **Phase 8 Task Command Validator**：`agent/tools/validator.py`（Schema 结构校验拒绝自由文本 + 业务规则：执行人存在/同部门/deadline/查重）
@@ -129,7 +133,7 @@
 - ⚠️ 企业事实（员工/部门/职责）不写入 Memory，由 RAG/DB 负责（事实会变，存 Memory 造成数据冲突）
 - 规则：后续新增 Memory 能力必须重新评估价值与复杂度
 
-## 最新（2026-08-16）：轻量统一 State + RAG 会话记忆（6-3.txt 调整版）
+## 最新（2026-08-16）：轻量统一 State + RAG 会话记忆（docs/phase-6-3-rag-memory.md 调整版）
 - **目标**：补上 Agent 连续上下文（conversations 表原只有 message_count 零历史；"那经理呢？"追问无法工作）
 - **不做 LangGraph 重构**：保持现有 runtime 主链路，不引入 langgraph-checkpoint-postgres，不改主流程
 - **Phase 1 会话存储**：conversation_messages 表（role user/assistant/tool/system + scope + tool_name + extra）+ conversation_memory_service（adapter 转 BaseMessage）+ runtime 统一加载/写历史
@@ -212,7 +216,7 @@
 
 ## 下一步
 1. **生产验证**：`curl https://api.wkcp.online/health` 已由 deploy.sh healthcheck 覆盖；建议按 deploy/README 第八节验证三角色权限（员工"给张三安排任务"→拒绝；经理→确认流；"我能不能申请远程办公"→结合角色回答；定时任务→System Agent 扫描）
-2. **后续（未做）**：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地、`AGENTS.md`（Codex 过期副本）同步/删除定论
+2. **后续（未做）**：前端治理看板接入（P5-5 traces/configs/prompts/cost/resilience/health 页面）、Celery 异步管线、技术债务（get_llm 缓存/废弃 server.py）、多部门隔离 department_id 外键落地（`AGENTS.md` Codex 过期副本已于公开仓库整理时删除）
 3. **运维提醒**：CI 测试会消耗真实 DeepSeek token（LLM 用例）+ GitHub Actions 分钟数；`JWT_SECRET` 等测试凭据仅为 CI 占位，生产仍用服务器 .env 真实值
 
 **分工**：用户保管并执行所有敏感操作（服务器/密码/SSH/域名/DB/企微凭据）；我只给命令/检查/排障，绝不索要敏感值。详见记忆 `user-ops-split`。
@@ -242,7 +246,7 @@ Work Agent
 - 按部门/角色做文档访问权限控制
 
 
-## 最终架构（guihua.txt 规划）
+## 最终架构（docs/project-plan.md 规划）
 
 企业微信 + Web后台 → FastAPI → Service层 → Data层（PostgreSQL/Milvus/MinIO/Redis）
 Agent层：LangGraph → Router → RAG Agent / Task Agent
@@ -481,7 +485,7 @@ src/work_agent/
 - 索引补齐：`scripts/migrate_indexes.py`（agent_logs/operation_logs/documents/roles/document_permission）
 - 审计补齐：归档端点记录 `audit.archive` 操作日志
 - 配置收紧：config.py 移除弱口令默认值（强制 .env 提供）；新增 `.env.example` 生产模板
-- 完整报告：`architecture_review.md`
+- 完整报告：`docs/architecture-review.md`
 
 **Phase 3-2 企业级运营与治理**：
 - Dashboard 驾驶舱：`GET /api/admin/dashboard/stats`（文档/问答/安全/租户/用量统计，租户隔离），DashboardService + 前端真实接口 + test_dashboard.py

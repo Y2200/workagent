@@ -123,7 +123,7 @@ DB / External Service (PostgreSQL, Milvus, MinIO)
 
 ## 六、错误记录
 
-- `errors.txt` 持续维护（当前记录 13 项历史问题）
+- `docs/debug-record.md` 持续维护（当前记录 13 项历史问题）
 - 审查过程新增记录：RBACService 分层违规、归档审计缺失、配置弱默认值
 
 ---

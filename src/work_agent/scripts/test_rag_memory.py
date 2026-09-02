@@ -1,5 +1,5 @@
 """
-RAG 会话记忆测试（6-3.txt 轻量 State，Phase 1-4）
+RAG 会话记忆测试（docs/phase-6-3-rag-memory.md 轻量 State，Phase 1-4）
 
 Part A  数据层 + context window（保存完整历史，读取限窗口）
 Part B  query rewrite（指代词优先 _is_follow_up）

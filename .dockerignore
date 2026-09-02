@@ -47,13 +47,11 @@ Dockerfile
 
 # 项目文档 / 环境
 *.md
+docs/
 requirements.txt
 pyproject.toml
 uv.lock
 CHANGELOG.md
-guihua.txt
-errors.txt
-architecture_review.md
 
 # IDE / 其他
 .idea/
