@@ -5,7 +5,7 @@
 企微主动提醒任务负责人（员工）。
 
 - 风险规则确定性、可单测，无 LLM 依赖（每日定时任务零成本、零失败）
-- 仅提醒员工（按 6-2.txt Phase 3 设计）
+- 仅提醒员工（按 docs/phase-6-2-task-supervision.md Phase 3 设计）
 - 发送复用 notification_service.send_wechat（发送 + 落库 task_notifications，
   任何异常吞掉不影响主流程）；未绑定企微的员工记录 failed 不发送
 - 多租户：通知按 task.tenant_id 隔离
@@ -64,7 +64,7 @@ class TaskReminderService:
         """
         按截止日期 + 进度判断风险等级
 
-        规则（6-2.txt 示例：距截止 7 天完成 20% → 高风险）：
+        规则（docs/phase-6-2-task-supervision.md 示例：距截止 7 天完成 20% → 高风险）：
         - 无截止日期    → low
         - 已逾期        → high
         - 剩余 ≤1 天    → 进度<90→high，否则 medium

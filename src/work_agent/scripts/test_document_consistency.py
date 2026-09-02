@@ -126,7 +126,7 @@ def test_part2_reimport_searchable():
 def test_part3_race_final_consistency():
     """Part 3：竞态删除（上传后立即删）最终无孤儿向量"""
     orphan_total = 0
-    # 与 errors.txt 原始记录一致：竞态复现 8 轮最终 0 孤儿
+    # 与 docs/debug-record.md 原始记录一致：竞态复现 8 轮最终 0 孤儿
     rounds = 8
     for i in range(rounds):
         doc = _upload(

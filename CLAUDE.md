@@ -7,10 +7,9 @@
 
 | 文件 | 作用 |
 |------|------|
-| **`PROJECT_CONTEXT.md`** | 项目活文档：目标/架构/已完成阶段/下一步/常用命令。**每次新会话必读** |
-| **`guihua.txt`** | 总体规划（架构/分层铁律/开发顺序） |
-| **`errors.txt`** | 全部历史问题记录（每个问题含原因/解决方案/验证方式） |
-| **`architecture_review.md`** | 架构审查结果（分层/多租户安全/索引） |
+| **`docs/project-context.md`** | 项目活文档：目标/架构/已完成阶段/下一步/常用命令。**每次新会话必读** |
+| **`docs/architecture-review.md`** | 架构审查结果（分层/多租户安全/索引） |
+| `docs/project-plan.md` / `docs/debug-record.md` | 总体规划 / 问题记录（**本地开发文档，不入库**，已 gitignore） |
 
 ## 当前状态（v0.5-agent-platform 里程碑）
 
@@ -41,7 +40,7 @@
 4. **权限**：Agent 执行必须经 RBAC（`require_permission`）；RAG 检索经 `PermissionFilter`
 5. **审计**：Agent 执行必须写 Audit（`core/audit_logger.py`）
 6. **Tool 禁直连 DB**：工具只经 Service
-7. **开发节奏**：每阶段 = 写测试 + 全量回归 + 更新 PROJECT_CONTEXT.md + 错误写入 errors.txt
+7. **开发节奏**：每阶段 = 写测试 + 全量回归 + 更新 docs/project-context.md + 错误写入 docs/debug-record.md
 
 ## 运行环境
 
