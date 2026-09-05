@@ -123,6 +123,10 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
+          # 服务器冷构建（apt ffmpeg + pip 全量 ML 依赖）可超 10 分钟；
+          # appleboy/ssh-action 命令默认超时 10m，需放宽否则在 docker build 中被掐断
+          # （2026-09-02 d898768 CD 失败即为此：Run Command Timeout）
+          command_timeout: 30m
           script: |
             set -e
             cd /opt/work-agent || exit 1
