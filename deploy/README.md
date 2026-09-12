@@ -43,8 +43,30 @@ backend          postgres / redis              milvus(-etcd/-minio) / work-minio
 
 ## 前置（在你本地 / GitHub 上做）
 
-1. **Docker Hub 建两个仓库**：`<用户名>/workagent-backend`、`<用户名>/workagent-frontend`
-   （private 也可以，但服务器需要先 `docker login`，见第 5 步）
+1. **Docker Hub 建三个仓库**：
+   - `<用户名>/workagent-backend`、`<用户名>/workagent-frontend` —— CI 构建推送
+     （private 也可以，但服务器需要先 `docker login`，见第 5 步）
+   - `<用户名>/minio` —— **必须是 public**，自建搬运的 MinIO 镜像，见下方说明
+
+   ```bash
+   # 在服务器上执行（镜像来源是生产正在运行的那一份，原样搬运、不升级）
+   docker tag minio/minio:latest <用户名>/minio:RELEASE.2025-09-07T16-13-09Z
+   docker login -u <用户名>          # 密码填 PAT
+   docker push <用户名>/minio:RELEASE.2025-09-07T16-13-09Z
+
+   # 验证确实能从仓库拉回（先删本地 tag 再拉更严格）
+   docker pull <用户名>/minio:RELEASE.2025-09-07T16-13-09Z
+   ```
+
+   > **为什么自建**：MinIO 于 2025-10 停止分发社区镜像，Docker Hub 与 Quay **双双下架**，
+   > `minio/minio` 在任何没有缓存的机器上都拉不到（报 `pull access denied ... repository does not exist`）。
+   > 这里是把生产**正在用的那份镜像原样搬运**到自己的仓库（二进制完全一致 → Milvus 与文档存储行为零变化、
+   > 无需数据迁移），并把 tag 固定为 `RELEASE.2025-09-07T16-13-09Z`，从此不随上游变化。
+   >
+   > **必须 public**：CI 的 `test` job（在全新 runner 上）要拉这个镜像，public 才无需在测试环节登录；
+   > 若设为 private，fork PR 将因拿不到 Secrets 而无法跑测试。
+   >
+   > ⚠️ 搬运完成前/后都**不要删除服务器上的 `minio/minio:latest`** —— 它已无法从任何公共仓库重新拉取。
 2. **GitHub Secrets**（`Y2200/workagent` → Settings → Secrets and variables → Actions）：
 
 | Secret | 值 |
@@ -243,7 +265,8 @@ export IMAGE_TAG=$(cat deploy/.last_deploy)     # 手动运维命令前必备
 | 查看当前证书 | `docker compose -f deploy/docker-compose.prod.yml --env-file .env --profile certbot run --rm certbot certificates` |
 
 > ⚠️ **不要在生产执行 `docker compose down -v`**：`-v` 会删除数据卷（PostgreSQL / Milvus / MinIO 数据）。
-> ⚠️ **不要执行 `docker image prune -a`**：会删掉历史版本镜像，导致回滚时 pull 回旧版本变慢/失败。
+> ⚠️ **不要执行 `docker image prune -a`**：会删掉历史版本镜像，导致回滚时 pull 回旧版本变慢/失败；
+> 更要紧的是，服务器上那份**原始 `minio/minio:latest` 已无法从任何公共仓库重新拉取**，删掉就真的没了。
 
 ---
 
@@ -361,6 +384,7 @@ docker logs -f work-agent-backend
 | 现象 | 原因 / 处理 |
 |------|-------------|
 | `docker compose` 报 `IMAGE_TAG` 未设置 | 预期行为（防止误用 latest）。`export IMAGE_TAG=$(cat deploy/.last_deploy)` 后重试 |
+| 拉 MinIO 报 `pull access denied for <用户名>/minio`（CI 或服务器） | 镜像还没推到 Docker Hub，或仓库是 private 而拉取端未登录。按第一章「前置」在服务器执行 tag+push，并把仓库设为 **public** |
 | frontend 容器反复重启 / `nginx: [emerg] cannot load certificate` | 证书卷缺失或符号链接断链。检查 `/opt/work-agent/certbot/conf/live/wkcp.online/fullchain.pem` 是否可读；`docker logs work-agent-frontend` |
 | preflight 报「宿主机 nginx 仍在运行」 | 归一化切换未完成：`sudo systemctl stop nginx && sudo systemctl disable nginx` |
 | preflight 报缺少证书 | 步骤 1.1 未做完（`cp -a /etc/letsencrypt/.` ） |

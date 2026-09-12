@@ -17,7 +17,9 @@ services:
 
   minio:
     container_name: milvus-minio
-    image: minio/minio
+    # MinIO 上游已于 2025-10 停止分发社区镜像（Docker Hub/Quay 双双下架），
+    # 这里固定为自建搬运的镜像（与原 minio/minio:latest 同一份二进制，仅换 tag）
+    image: ydy0202/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -72,7 +74,9 @@ services:
 
   work-minio:
     container_name: work-minio
-    image: minio/minio
+    # MinIO 上游已于 2025-10 停止分发社区镜像（Docker Hub/Quay 双双下架），
+    # 这里固定为自建搬运的镜像（与原 minio/minio:latest 同一份二进制，仅换 tag）
+    image: ydy0202/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin

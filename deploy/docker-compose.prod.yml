@@ -20,6 +20,11 @@
 #   - 全部数据卷持久化（docker compose up 重跑不丢数据）
 #   - 日志 json-file 轮转（max-size 20m / max-file 5）
 #
+# MinIO 镜像：上游 minio/minio 于 2025-10 停止分发社区镜像（Docker Hub 与 Quay 双双下架），
+#   因此改为自建搬运 —— 由服务器上已缓存的原镜像 docker tag 后推送到自己的 Docker Hub，
+#   二进制与生产原先运行的完全一致（无升级、无数据迁移），tag 固定不随上游变化。
+#   来源：RELEASE.2025-09-07T16-13-09Z（Image ID 14cea493d9a3）
+#
 # 运行（从仓库根执行，.env 位于仓库根）：
 #   IMAGE_TAG=<commit-sha> docker compose -f deploy/docker-compose.prod.yml --env-file .env pull backend frontend
 #   IMAGE_TAG=<commit-sha> docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
@@ -105,7 +110,8 @@ services:
       retries: 10
 
   milvus-minio:
-    image: minio/minio
+    # 上游 minio/minio 已下架（2025-10 停止分发）；此为自建搬运的同一份镜像，tag 固定
+    image: ydy0202/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: work-agent-milvus-minio
     restart: unless-stopped
     networks: [internal]
@@ -160,7 +166,8 @@ services:
   # MinIO（应用文档存储，独立卷）
   # ======================
   work-minio:
-    image: minio/minio
+    # 上游 minio/minio 已下架（2025-10 停止分发）；此为自建搬运的同一份镜像，tag 固定
+    image: ydy0202/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: work-agent-minio
     restart: unless-stopped
     networks: [internal]
@@ -173,7 +180,7 @@ services:
       - work-minio-data:/minio_data
     command: minio server /minio_data
     healthcheck:
-      # 镜像含 curl（本机实测 minio/minio → /usr/bin/curl）
+      # 镜像含 curl（本机实测该 MinIO 镜像 → /usr/bin/curl）
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 15s
       timeout: 5s

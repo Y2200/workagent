@@ -45,9 +45,16 @@
   新增 `frontend`（80/443 + 证书卷）与 `certbot`（profile）；**6 个基础设施服务定义一行未动**
 - **验证（本机）**：`docker compose config` 通过（插值 + 端口 + 证书卷解析正确）；全部 `deploy/scripts/*.sh` 通过 `bash -n`；
   `ci.yml` YAML 解析通过（3 job / needs 链正确）；`.gitattributes` 实测使入库 blob 为 LF
+- **MinIO 镜像自建搬运（2026-09-12 追加）**：上游 MinIO 于 2025-10 停止分发社区镜像，Docker Hub 与 Quay
+  **双双下架** → 由 CI `test` job 在全新 runner 上首次暴露（`pull access denied ... repository does not exist`；
+  生产与本地因已有镜像缓存未受影响）。处置：把生产在用那份镜像**原样搬运**到自有 Docker Hub
+  （`ydy0202/minio:RELEASE.2025-09-07T16-13-09Z`，Image ID `14cea493d9a3`，与原 `minio/minio:latest`
+  二进制一致 → 无升级、无数据迁移、Milvus 与文档存储行为零变化），4 处引用（dev compose 2 + prod compose 2）
+  全部改为该固定 tag（不再用 `latest`）。
+  ⚠️ 服务器上的原始 `minio/minio:latest` 已无法从任何公共仓库重新拉取，**禁止 `docker image prune -a`**
 - **待办**：服务器侧一次性切换**未执行**（本环境不连接服务器，runbook 见 `deploy/README.md` 第一章）；
-  Docker Hub 两个仓库待创建、`DOCKER_USERNAME`/`DOCKER_PAT` Secrets 待配置；
-  `frontend/package-lock.json` 待提交入库
+  Docker Hub **三个**仓库待创建（`workagent-backend` / `workagent-frontend` / `minio`(必须 public)）、
+  `DOCKER_USERNAME`/`DOCKER_PAT` Secrets 待配置；MinIO 镜像待从服务器 tag+push 到自有仓库
 
 ## 最新（2026-08-31）：企微语音识别（阿里云 ASR 一句话识别）
 - **能力**：员工在企微发语音 → 阿里云 NLS 一句话识别 → 文本 → 走现有 Agent 问答链路
