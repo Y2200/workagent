@@ -3,7 +3,7 @@
 # P6-2 生产部署（幂等，可重复执行）
 #   镜像来自 Docker Hub；服务器**不构建、不 git pull**
 #
-#   流程：预检 → 校验变量 → pull 应用镜像 → up -d → 等后端就绪
+#   流程：校验变量 → 预检 → pull 应用镜像 → up -d → 等后端就绪
 #         → 幂等迁移/种子 → 记录版本 → 健康检查
 #
 # 用法：
@@ -24,11 +24,9 @@ COMPOSE_FILE="deploy/docker-compose.prod.yml"
 ENV_FILE=".env"
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file $ENV_FILE"
 
-echo "===== 0. 预检 ====="
-bash deploy/scripts/preflight.sh
-
-echo ""
-echo "===== 1. 校验部署变量 ====="
+echo "===== 0. 校验部署变量 ====="
+# 放在预检之前：先失败在"纯前置条件"上，便于区分
+#   「CI 传参/环境变量没进来」 与 「服务器状态尚未就绪（如宿主机 nginx 未停用）」
 : "${IMAGE_TAG:?请注入镜像版本：IMAGE_TAG=<commit-sha> bash deploy/scripts/deploy.sh}"
 test -f "$ENV_FILE" || { echo "✗ 缺少 $ENV_FILE，请按 deploy/README.md 创建"; exit 1; }
 if ! grep -qE '^DOCKERHUB_USER=.+' "$ENV_FILE" && [ -z "${DOCKERHUB_USER:-}" ]; then
@@ -38,6 +36,10 @@ fi
 export IMAGE_TAG
 if [ -n "${DOCKERHUB_USER:-}" ]; then export DOCKERHUB_USER; fi
 echo "✓ IMAGE_TAG=$IMAGE_TAG"
+
+echo ""
+echo "===== 1. 预检 ====="
+bash deploy/scripts/preflight.sh
 
 echo ""
 echo "===== 2. 拉取应用镜像（仅 frontend/backend；基础设施不动）====="
