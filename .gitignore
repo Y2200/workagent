@@ -31,6 +31,8 @@ docs/debug-record.md
 docs/phase-*.md
 # P6-2 改造需求书（本地过程文档，不入库）
 阅读.txt
+# 会话恢复指南的 Codex 副本（与 CLAUDE.md 同步维护，仅本地保留）
+AGENTS.md
 
 # ======================
 # 数据 / 日志 / 运行产物
