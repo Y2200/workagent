@@ -63,10 +63,21 @@ echo "✓ 宿主机无 nginx 运行（或未安装）"
 
 echo ""
 echo "===== 8. 80/443 端口状态 ====="
-if ss -ltn 2>/dev/null | grep -E ':(80|443)\s'; then
-  echo "⚠  80/443 已被占用——确认是本项目的 frontend 容器（docker-proxy）；首次部署前应为空闲"
+# 切换后常态：80/443 由本项目的 frontend 容器经 docker-proxy 占用 → 正常
+# 只有被**宿主机 Web 服务器**占用才是异常（会与 frontend 容器抢端口）
+LISTEN_ENTRIES="$(ss -ltnp 2>/dev/null | grep -E ':(80|443)\s' || true)"
+if [ -z "$LISTEN_ENTRIES" ]; then
+  echo "⚠  80/443 空闲——若 frontend 容器已在运行，请确认它是否真的接管了入口"
+elif echo "$LISTEN_ENTRIES" | grep -q 'docker-proxy'; then
+  echo "✓ 80/443 由 docker-proxy（本项目的 frontend 容器）占用"
+elif echo "$LISTEN_ENTRIES" | grep -qE '"(nginx|httpd|apache2)"'; then
+  echo "✗ 80/443 被宿主机 Web 服务器占用，会与 frontend 容器冲突："
+  echo "$LISTEN_ENTRIES"
+  echo "  处理：sudo systemctl stop nginx && sudo systemctl disable nginx"
+  exit 1
 else
-  echo "✓ 80/443 空闲"
+  echo "⚠  80/443 已被占用，但无法确认占用者（非 root 时看不到进程名）："
+  echo "$LISTEN_ENTRIES"
 fi
 
 echo ""

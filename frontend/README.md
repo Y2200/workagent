@@ -25,6 +25,7 @@ npm run build
 ## 对接后端
 
 - 开发环境：Vite 代理 `/api` → `http://127.0.0.1:8000`（见 `vite.config.js`）
-- 生产环境：由 nginx 将 `/` 与 `/api` 反代到前端与后端（部署阶段配置）
+- 生产环境：由 `frontend` 容器内的 Nginx 承担入口 —— `/` 托管本目录的构建产物（`dist`），`/api` 反代到 `backend:8000`。
+  Nginx 配置位于 `deploy/nginx/`，**随镜像一起构建发布**（即改配置需要走一次发版），详见 `deploy/README.md`
 - JWT 存于 `localStorage`，axios 请求拦截自动附加 `Authorization: Bearer <token>`
 - 401 自动跳转登录页

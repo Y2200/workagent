@@ -38,7 +38,7 @@ Web 后台 ─┴─ 请求 ──→ API ─┤                                
 | 数据库 | PostgreSQL 16（SQLAlchemy 2.0）· Milvus 2.5（bge-small-zh 向量） |
 | 存储 / 缓存 | MinIO · Redis |
 | 接入 | 企业微信自建应用（消息回调 + 主动推送） |
-| CI/CD | GitHub Actions（测试门禁 + SSH 自动部署） |
+| CI/CD | GitHub Actions（测试门禁 → 构建镜像推 Docker Hub → SSH 让服务器拉取部署） |
 
 ## 快速开始（本地开发）
 
@@ -72,7 +72,9 @@ python -m work_agent.scripts.test_<name>          # 单个测试套件
 python -m work_agent.scripts.run_agent_evaluation # Agent 评测（50 案例）
 ```
 
-CI 已配置 `.github/workflows/ci.yml`：push 任意分支跑全量测试门禁，push `master` 通过后 SSH 自动部署生产。
+CI 已配置 `.github/workflows/ci.yml`：push 任意分支跑全量测试门禁；push `master` 且测试通过后，自动构建前后端镜像
+推送到 Docker Hub，再由 SSH 让生产服务器拉取并重启（**服务器不构建、不留源码，镜像按 commit SHA 固定版本**，
+详见 `deploy/README.md`）。
 
 ## 目录结构
 
@@ -99,7 +101,7 @@ docs/               # 架构审查等文档
 
 - `docs/project-context.md` — 项目活文档（目标 / 架构 / 已完成阶段 / 下一步）
 - `docs/architecture-review.md` — 架构审查结果
-- `deploy/README.md` — 生产部署手册（腾讯云 / 阿里云）
+- `deploy/README.md` — 生产部署手册（CI 构建镜像 → Docker Hub → 服务器只负责拉取与运行）
 
 ## 安全
 

@@ -24,6 +24,37 @@ backend          postgres / redis              milvus(-etcd/-minio) / work-minio
 （无 Nginx、无 Certbot、无 Git 工作区、无源码/Node）
 ```
 
+## 当前状态（2026-09-12 起，现网实测）
+
+**现网已完成 P6-2 切换**：宿主机 Nginx 已停用，Web 入口由 `frontend` 容器承担；应用镜像由 CI 构建并推送
+Docker Hub，服务器只负责拉取与运行。已核对的事实：
+
+| 项 | 现状 |
+|--|--|
+| 运行镜像 | `<DOCKERHUB_USER>/workagent-{backend,frontend}:<commit SHA>`（现网 `b3c94518…`） |
+| MinIO 镜像 | `ydy0202/minio:RELEASE.2025-09-07T16-13-09Z`（上游下架后的自建搬运，见第一章前置） |
+| 宿主机 Nginx | 已 `stop` + `disable`；原配置备份在 `/root/nginx-conf.d.bak-<日期>` |
+| 证书 | 持久化在 `/opt/work-agent/certbot/{conf,www}`，frontend 容器**整目录只读**挂载；续期由 `cert-renew.timer` 驱动 |
+| 宿主机 certbot | `certbot.timer` 已 disable；`/etc/cron.d/certbot` 已删除（留 `.bak`）——避免与容器化续期抢同一域名 |
+| 宿主机 `/etc/letsencrypt` | **保留**（证书备份 + 主机侧退路），但不再被任何服务使用 |
+| CI/CD | 已跑通：push master → `test` → `build`（推 Docker Hub）→ `deploy`（scp + pull + up + 迁移 + 健康检查） |
+
+### ⚠️ 两条必须长期保持的前提
+
+1. **服务器要一直保持 Docker Hub 登录状态** —— 因为 `workagent-backend` 是 **private** 仓库。
+   凭据保存在「跑 `deploy.sh` 的那个用户」的 `~/.docker/config.json`。
+   一旦丢失（换机 / home 被清理 / PAT 过期或被撤销），部署会停在 `docker compose pull` 这一步 ——
+   **这个失败是安全的**：`set -e` 会在 `up -d` 之前中止，生产继续跑旧版本，不会变砖。
+   恢复：`docker login -u <DOCKERHUB_USER>`（密码填 PAT，**必须是跑 deploy.sh 的同一个用户**）。
+   （`workagent-frontend` 与 `minio` 是 public，不需要登录。）
+2. **不要在服务器上执行 `git pull` / `git checkout` / `git stash`** —— 服务器上还留着 P6-1 时期的源码树，
+   其 HEAD 停在 `70261a8`；一旦把旧 compose 恢复到工作区，会直接破坏当前架构。清理见第一章步骤 7。
+
+> **日常发版看「二、日常发版」。** 第一章是**新服务器首次上线**流程 —— 现网已于 2026-09-12 执行完毕，
+> **请勿在已切换的服务器上重复执行**。
+
+---
+
 ## 核心原则（P6-2 改造后）
 
 | | 说明 |
@@ -36,16 +67,22 @@ backend          postgres / redis              milvus(-etcd/-minio) / work-minio
 
 ---
 
-# 一、首次上线：服务器一次性切换
+# 一、新服务器首次上线流程（一次性）
 
-> ⚠️ 本次切换需要一次**停机窗口**（约 1–3 分钟，建议低峰执行）。
+> ✅ **现网已于 2026-09-12 按本章执行完毕并验证通过**（`https://wkcp.online` 返回 200、
+> `api.wkcp.online/health` 返回 ok、证书 `--dry-run` 成功、CI/CD 部署 job 全绿）。
+> **不要在已切换的服务器上重复执行本章** —— 它会再次停掉正在服务的入口、重复迁移证书。
+> 本章保留用途：**将来换新服务器 / 重建环境时照做**。
+>
+> ⚠️ 需要一次**停机窗口**（约 1–3 分钟，建议低峰执行）。
 > 顺序经过设计：**能提前做的都不占停机时间**，停机只覆盖「停宿主机 Nginx → 起容器」。
 
 ## 前置（在你本地 / GitHub 上做）
 
 1. **Docker Hub 建三个仓库**：
-   - `<用户名>/workagent-backend`、`<用户名>/workagent-frontend` —— CI 构建推送
-     （private 也可以，但服务器需要先 `docker login`，见第 5 步）
+   - `<用户名>/workagent-backend` —— CI 构建推送，**本项目实际为 private**
+     （因此服务器必须**长期保持** `docker login` 状态，见「当前状态」两条前提）
+   - `<用户名>/workagent-frontend` —— CI 构建推送，**public**
    - `<用户名>/minio` —— **必须是 public**，自建搬运的 MinIO 镜像，见下方说明
 
    ```bash
@@ -385,6 +422,7 @@ docker logs -f work-agent-backend
 |------|-------------|
 | `docker compose` 报 `IMAGE_TAG` 未设置 | 预期行为（防止误用 latest）。`export IMAGE_TAG=$(cat deploy/.last_deploy)` 后重试 |
 | 拉 MinIO 报 `pull access denied for <用户名>/minio`（CI 或服务器） | 镜像还没推到 Docker Hub，或仓库是 private 而拉取端未登录。按第一章「前置」在服务器执行 tag+push，并把仓库设为 **public** |
+| 拉 `workagent-backend` 报 `unauthorized` / `denied`（deploy 的 pull 阶段） | 服务器 Docker Hub 凭据丢失、PAT 过期或被撤销（该仓库是 **private**）。用跑 `deploy.sh` 的**同一用户**执行 `docker login -u <DOCKERHUB_USER>`（密码填 PAT）后重跑。此失败是安全的：`pull` 失败在 `up -d` 之前中止，生产仍在跑旧版本 |
 | frontend 容器反复重启 / `nginx: [emerg] cannot load certificate` | 证书卷缺失或符号链接断链。检查 `/opt/work-agent/certbot/conf/live/wkcp.online/fullchain.pem` 是否可读；`docker logs work-agent-frontend` |
 | preflight 报「宿主机 nginx 仍在运行」 | 归一化切换未完成：`sudo systemctl stop nginx && sudo systemctl disable nginx` |
 | preflight 报缺少证书 | 步骤 1.1 未做完（`cp -a /etc/letsencrypt/.` ） |

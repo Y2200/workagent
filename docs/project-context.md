@@ -8,14 +8,28 @@
 
 # ⚡ 当前状态（2026-09-12，CI/CD 改为容器化模式 P6-2）
 
-**代码状态**：本地 `master` = `70261a8`（P6-2 改造在工作区，尚未提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态**：远程 `master` = `b3c9451`（P6-2 容器化改造 + MinIO 镜像自建搬运）。本地在途：部署文档收尾、`deploy.sh` 步骤顺序调整（`3174059`）。
 
-**✅ CI/CD 已改为容器化模式（P6-2）**：push master → `test` → `build`（构建并推送前后端镜像到 Docker Hub，tag = commit SHA）→ `deploy`（scp `deploy/` 制品 → SSH `docker compose pull` + `up -d` → 幂等迁移 → 健康检查）。服务器**不再 git pull / npm build / docker build**，宿主机**不再装 Nginx / Certbot**。
+**✅ CI/CD 容器化模式已全链验证通过（2026-09-12）**：push master → `test` → `build`（构建并推送前后端镜像到 Docker Hub，tag = commit SHA）→ `deploy`（scp `deploy/` 制品 → SSH `docker compose pull` + `up -d` → 幂等迁移 → 健康检查）。服务器**不再 git pull / npm build / docker build**，宿主机**不再装 Nginx / Certbot**。
+
+**✅ 生产服务器切换已完成并验证（2026-09-12）**：`https://wkcp.online` → 200；`https://api.wkcp.online/health` → `{"status":"ok"}`；
+frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Milvus / etcd / 两个 MinIO 全部 healthy；
+证书已迁至 `/opt/work-agent/certbot/{conf,www}` 并由 `cert-renew.timer` 续期（`renew-cert.sh --dry-run` 通过）；
+宿主机 `certbot.timer` 已停用、`/etc/cron.d/certbot` 已移除（避免与容器化续期冲突）；
+两个 MinIO 均运行在 `ydy0202/minio:RELEASE.2025-09-07T16-13-09Z`。
+
+⚠️ **运维前提（长期）**：`workagent-backend` 是 **private** 仓库 → **服务器必须保持 Docker Hub 登录状态**
+（凭据在跑 `deploy.sh` 的那个用户的 `~/.docker/config.json`），否则部署会停在 `pull` 阶段；
+该失败是安全的（`set -e` 在 `up -d` 之前中止，生产继续跑旧版本）。`workagent-frontend` 与 `minio` 为 public。
+另：**不要在服务器上执行 `git pull/checkout/stash`**（服务器留有 P6-1 源码树，HEAD 停在 `70261a8`，会把旧 compose 恢复回工作区）。
+详见 `deploy/README.md`「当前状态」。
 
 ## 最新（2026-09-12）：P6-2 CI/CD 容器化改造（方案B：Nginx 也容器化）
 
-- **需求来源**：仓库根 `阅读.txt`（目标：CI 构建 → Docker Hub → CD 只拉镜像；ECS 只负责运行容器与持久化）
-- **目标架构**：`frontend` 容器 = Nginx + Vue dist **融合镜像**，唯一发布 80/443（TLS 终止 + 静态托管 + `/api` 反代）；
+- **需求（原始需求书已删除，要点留存于此）**：CI 构建前后端镜像 → 推 Docker Hub → CD 只 `pull` 镜像；
+  ECS **只负责运行容器、持久化数据、执行部署操作**，不再保存源码、不再执行 `npm build` / `docker build`；
+  镜像按 commit SHA 固定版本、必须支持明确版本部署与回滚；不得破坏既有 PG/Milvus/MinIO/Redis 配置与数据
+- **当前架构（已上线）**：`frontend` 容器 = Nginx + Vue dist **融合镜像**，唯一发布 80/443（TLS 终止 + 静态托管 + `/api` 反代）；
   backend 与 DB/Milvus/MinIO/Redis **零端口发布**，容器间经 internal 网络用服务名互访（`backend:8000`）
 - **镜像**：
   - `Dockerfile.frontend`（新）：`node:20-alpine` → `npm ci` + `vite build` → `nginx:alpine` + dist + `deploy/nginx/`
@@ -52,9 +66,14 @@
   二进制一致 → 无升级、无数据迁移、Milvus 与文档存储行为零变化），4 处引用（dev compose 2 + prod compose 2）
   全部改为该固定 tag（不再用 `latest`）。
   ⚠️ 服务器上的原始 `minio/minio:latest` 已无法从任何公共仓库重新拉取，**禁止 `docker image prune -a`**
-- **待办**：服务器侧一次性切换**未执行**（本环境不连接服务器，runbook 见 `deploy/README.md` 第一章）；
-  Docker Hub **三个**仓库待创建（`workagent-backend` / `workagent-frontend` / `minio`(必须 public)）、
-  `DOCKER_USERNAME`/`DOCKER_PAT` Secrets 待配置；MinIO 镜像待从服务器 tag+push 到自有仓库
+- **原待办项已完成**：Docker Hub 三个仓库已建（backend **private**、frontend/minio public）；
+  `DOCKER_USERNAME`/`DOCKER_PAT` Secrets 已配；MinIO 镜像已搬运至 `ydy0202/minio`；
+  服务器一次性切换已执行并验证；CI/CD 的 deploy job 已全绿
+- **剩余工作**：
+  1. **回滚演练**（等 `.deploy_history` ≥ 2 条后验证 `rollback.sh` 能回上一版本再切回）—— 通过之前不要做清理
+  2. **服务器旧源码清理**（`deploy/README.md` 第一章步骤 7）：不影响常规回滚（`rollback.sh` 只需
+     `deploy/` + `.env` + Docker Hub 镜像），失去的仅是"在服务器上重建 P6-1"这条 break-glass 路径
+  3. **可选加固**：deploy job 内自动 `docker login`（避免长期依赖服务器上那份手工登录凭据）
 
 ## 最新（2026-08-31）：企微语音识别（阿里云 ASR 一句话识别）
 - **能力**：员工在企微发语音 → 阿里云 NLS 一句话识别 → 文本 → 走现有 Agent 问答链路
@@ -105,6 +124,7 @@
   - Docker CE v29 + Compose v5.5 兼容；香港节点**免备案**；Docker 镜像拉取快
   - **4G 内存加固**已进 `deploy/docker-compose.prod.yml`：各容器 mem_limit（PG 512m/etcd 256m/minio×2 512m/milvus 1536m/redis 128m/backend 2g）+ Milvus `CACHE_MAX_MEMORY_USAGE_LIMIT=1024` + `GOMEMLIMIT=1GiB` + PG 调参 + torch 单线程；服务器另配 2G swap
   - **端口零暴露**（验证 `ss -ltn` 仅 22/80/443 + 回环 8000）：生产 compose 不发布 DB/Milvus/MinIO/Redis 端口，仅 backend `127.0.0.1:8000`
+    ⚠️ **P6-1 时期描述，已被 P6-2 取代**：现在 backend 也不再发布端口，80/443 由 frontend 容器独占（见文件顶部「当前状态」）
   - `.env` 全套新强随机密钥；企微复用本机真实凭据
 - **审计可见性修复（5cfa4fd）**：Web 问答审计看不到企微记录（tenant=1）——`/logs` 把 SUPER_ADMIN（tenant=""）的 tenant_id 严格相等过滤
   - `api/admin.py` 新增 `_tenant_scope`（SUPER_ADMIN → tenant_id=None 平台全量；租户管理员 → 本租户），应用于 /logs /operations /audit/statistics /dashboard/stats
@@ -392,7 +412,7 @@ src/work_agent/
 
 **Phase 6-1 Production Deployment 已完成**：
 - `deploy/`：生产部署体系（`docker-compose.prod.yml` + `nginx/` + `scripts/` + `README.md` 部署手册）
-- 架构：宿主机 Nginx（Certbot TLS）→ frontend/dist + /api 代理；Docker 内部网络跑 backend/postgres/milvus/redis/work-minio；数据库/Milvus/MinIO/Redis 不发布端口，backend 仅 127.0.0.1:8000
+- ⚠️ **P6-1 时期架构，已被 P6-2 取代（见文件顶部「当前状态」）** —— 架构：宿主机 Nginx（Certbot TLS）→ frontend/dist + /api 代理；Docker 内部网络跑 backend/postgres/milvus/redis/work-minio；数据库/Milvus/MinIO/Redis 不发布端口，backend 仅 127.0.0.1:8000
 - 镜像：`Dockerfile`（PYTHONPATH=/app/src、torch-cpu、单 worker、HF 缓存卷不烘焙模型）+ `.dockerignore`（排除密钥/数据/测试内容）
 - 依赖：`requirements.prod.txt`（`uv lock` 重建 + `uv export` 生成，torch=+cpu）；`requirements.txt` 保持原样
 - 配置：`.env.example` 扩展生产变量；`config.py` 新增 `milvus_uri`/`cors_origins`；`main.py` CORS 配置化（开发 `*` / 生产白名单）

@@ -1,3 +1,7 @@
 # 生产部署脚本必须为 LF：CRLF 会导致 Linux 上
 # bash: /opt/work-agent/deploy/scripts/deploy.sh: /usr/bin/env: bad interpreter
 *.sh text eol=lf
+
+# systemd unit 同理：CRLF 会让 ExecStart / OnCalendar 等值带上 \r 而失效
+*.service text eol=lf
+*.timer text eol=lf
