@@ -8,7 +8,11 @@
 
 # ⚡ 当前状态（2026-09-12，CI/CD 改为容器化模式 P6-2）
 
-**代码状态**：远程 `master` = `b3c9451`（P6-2 容器化改造 + MinIO 镜像自建搬运）。本地在途：部署文档收尾、`deploy.sh` 步骤顺序调整（`3174059`）。
+**代码状态**：`master` 已采用「CI 构建镜像 → Docker Hub → CD 仅拉取」模式（P6-2 容器化改造、MinIO 镜像自建搬运、部署文档收尾均已提交）。
+
+> ⚠️ **SHA 说明**：2026-09-12 对历史做过一次重写（清理提交署名），**90/92 个提交的 SHA 全部变更**，
+> 此前任何文档、注释或对话中出现的 commit SHA **均已失效，无法再解析**。
+> 生产运行版本请以服务器 `deploy/.last_deploy` 为准，不要再按旧 SHA 查找提交。
 
 **✅ CI/CD 容器化模式已全链验证通过（2026-09-12）**：push master → `test` → `build`（构建并推送前后端镜像到 Docker Hub，tag = commit SHA）→ `deploy`（scp `deploy/` 制品 → SSH `docker compose pull` + `up -d` → 幂等迁移 → 健康检查）。服务器**不再 git pull / npm build / docker build**，宿主机**不再装 Nginx / Certbot**。
 
@@ -21,7 +25,7 @@ frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Mi
 ⚠️ **运维前提（长期）**：`workagent-backend` 是 **private** 仓库 → **服务器必须保持 Docker Hub 登录状态**
 （凭据在跑 `deploy.sh` 的那个用户的 `~/.docker/config.json`），否则部署会停在 `pull` 阶段；
 该失败是安全的（`set -e` 在 `up -d` 之前中止，生产继续跑旧版本）。`workagent-frontend` 与 `minio` 为 public。
-另：**不要在服务器上执行 `git pull/checkout/stash`**（服务器留有 P6-1 源码树，HEAD 停在 `70261a8`，会把旧 compose 恢复回工作区）。
+另：**不要在服务器上执行 `git pull/checkout/stash`**（服务器留有 P6-1 源码树，其 HEAD 为 P6-1 时期的旧提交，会把旧 compose 恢复回工作区）。
 详见 `deploy/README.md`「当前状态」。
 
 ## 最新（2026-09-12）：P6-2 CI/CD 容器化改造（方案B：Nginx 也容器化）
@@ -126,11 +130,11 @@ frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Mi
   - **端口零暴露**（验证 `ss -ltn` 仅 22/80/443 + 回环 8000）：生产 compose 不发布 DB/Milvus/MinIO/Redis 端口，仅 backend `127.0.0.1:8000`
     ⚠️ **P6-1 时期描述，已被 P6-2 取代**：现在 backend 也不再发布端口，80/443 由 frontend 容器独占（见文件顶部「当前状态」）
   - `.env` 全套新强随机密钥；企微复用本机真实凭据
-- **审计可见性修复（5cfa4fd）**：Web 问答审计看不到企微记录（tenant=1）——`/logs` 把 SUPER_ADMIN（tenant=""）的 tenant_id 严格相等过滤
+- **审计可见性修复**：Web 问答审计看不到企微记录（tenant=1）——`/logs` 把 SUPER_ADMIN（tenant=""）的 tenant_id 严格相等过滤
   - `api/admin.py` 新增 `_tenant_scope`（SUPER_ADMIN → tenant_id=None 平台全量；租户管理员 → 本租户），应用于 /logs /operations /audit/statistics /dashboard/stats
   - agent_log/operation_log/document 仓库：`tenant_id=None` 不加租户过滤
   - `test_audit` 新增场景5（服务层+HTTP 层验证 SUPER_ADMIN 跨租户可见）；test_audit/test_dashboard/test_operation_audit/test_rbac 本地全绿
-- **CI 加固（6ce7787）**：测试前校验 `DOUBAO_API_KEY`，缺 LLM key 快速失败给明确提示（此前 LLM_API_KEY Secret 丢失 → 33 个测试在 import 阶段 get_llm() 全崩，报错模糊难排查）
+- **CI 加固**：测试前校验 `DOUBAO_API_KEY`，缺 LLM key 快速失败给明确提示（此前 LLM_API_KEY Secret 丢失 → 33 个测试在 import 阶段 get_llm() 全崩，报错模糊难排查）
 - **CD 正式启用**：新服务器部署密钥 + 3 个 GitHub Secrets（DEPLOY_HOST=新IP / DEPLOY_USER=root / DEPLOY_SSH_KEY=新私钥）已配；push master → test → deploy 全自动
 - **经验**：① 4G 跑全栈必须 mem_limit + swap，Milvus 是最大内存风险 ② `docker compose config` 不带 `-f deploy/...` 会误读开发版 compose（暴露端口），生产与开发端口策略不同 ③ 改 GitHub Secrets 时易误删 `LLM_API_KEY`
 - **验证**：CI 重跑 test 全绿 → deploy 成功 → Web 问答审计已出现企微记录；企微「我的任务」端到端回复正常
@@ -206,7 +210,7 @@ frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Mi
 - **Phase 4 生产优化**：context window（不删历史）+ 异常容错 + 跨用户隔离 + scope 字段；task_pending_creates 改 partial unique index（允许多条历史）
 - **测试**：test_rag_memory（Part A-D）
 
-**代码状态**：本地 `master` = `70bc1f1`（Enterprise Agent Phase 1-4）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态（当时）**：Enterprise Agent Phase 1-4。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
 ## 最新（2026-08-16）：升级为企业智能任务 Agent（4 Phase 完成）
 - **目标**：从"提问→LLM→查库→回答"升级为"企业 Agent 工具编排层"（非聊天机器人），任务 Agent 为核心
@@ -216,7 +220,7 @@ frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Mi
 - **Phase 4 通知+督办**：notification_tool（企微/邮件提醒，send_email 确认+SMTP 检查）、主动督办增强（staleness/部门 digest）、周报部门经理投递、agent_logs.confirmed 审计字段、task:notify 权限码
 - **测试**：test_enterprise_agent（Part A-F 12 项）+ test_task_reminder_extended（5 项）+ 全量回归绿
 
-**代码状态**：本地 `master` = `a6eb3ed`（一致性修复）+ 租户语义修复（待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态（当时）**：一致性修复 + 租户语义修复（当时待提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
 ## 最新（2026-08-16）：企微查不到 Web 空租户文档 → 已修复
 - **bug**：企微提问回复"未检索到相关制度"，Web 端能搜到同一批文档
@@ -236,7 +240,7 @@ frontend 容器接管 80/443（TLS 终止），backend / PostgreSQL / Redis / Mi
 - Milvus 租户元数据修复（`repair_milvus_metadata.py` + `update_document_metadata`）
 - 任务督导 MVP + 二轮优化（见下）
 
-## 最近完成（已推送 `87edaa4`，服务器部署验证中）
+## 最近完成（已推送，服务器部署验证中）
 - 任务督导 Phase 4：统计/周报/邮件（见下「任务统计 / 周报 / 邮件」）
 - 用户管理增强 A/B/C（见下）
 - 企微链路排障：闲聊路由 + 督导 JSON 容错（"你好"不再"系统繁忙"）

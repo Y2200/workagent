@@ -31,7 +31,7 @@ Docker Hub，服务器只负责拉取与运行。已核对的事实：
 
 | 项 | 现状 |
 |--|--|
-| 运行镜像 | `<DOCKERHUB_USER>/workagent-{backend,frontend}:<commit SHA>`（现网 `b3c94518…`） |
+| 运行镜像 | `<DOCKERHUB_USER>/workagent-{backend,frontend}:<commit SHA>`（现网运行版本以服务器 `deploy/.last_deploy` 为准） |
 | MinIO 镜像 | `ydy0202/minio:RELEASE.2025-09-07T16-13-09Z`（上游下架后的自建搬运，见第一章前置） |
 | 宿主机 Nginx | 已 `stop` + `disable`；原配置备份在 `/root/nginx-conf.d.bak-<日期>` |
 | 证书 | 持久化在 `/opt/work-agent/certbot/{conf,www}`，frontend 容器**整目录只读**挂载；续期由 `cert-renew.timer` 驱动 |
@@ -48,7 +48,7 @@ Docker Hub，服务器只负责拉取与运行。已核对的事实：
    恢复：`docker login -u <DOCKERHUB_USER>`（密码填 PAT，**必须是跑 deploy.sh 的同一个用户**）。
    （`workagent-frontend` 与 `minio` 是 public，不需要登录。）
 2. **不要在服务器上执行 `git pull` / `git checkout` / `git stash`** —— 服务器上还留着 P6-1 时期的源码树，
-   其 HEAD 停在 `70261a8`；一旦把旧 compose 恢复到工作区，会直接破坏当前架构。清理见第一章步骤 7。
+   其 HEAD 停在 P6-1 时期的旧提交；一旦把旧 compose 恢复到工作区，会直接破坏当前架构。清理见第一章步骤 7。
 
 > **日常发版看「二、日常发版」。** 第一章是**新服务器首次上线**流程 —— 现网已于 2026-09-12 执行完毕，
 > **请勿在已切换的服务器上重复执行**。

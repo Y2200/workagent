@@ -200,7 +200,7 @@ jobs:
           port: 22
           envs: IMAGE_TAG,DOCKERHUB_USER
           # 镜像已在 CI 构建推送，服务器只拉取与重启，10m 足够
-          # （旧方案服务器冷构建需 30m，见 70261a8）
+          # （旧方案服务器冷构建需 30m）
           command_timeout: 10m
           script: |
             set -e
