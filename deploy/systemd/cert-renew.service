@@ -1,0 +1,26 @@
+# ==========================================
+# P6-2 Let's Encrypt 证书续期（certbot 容器，由宿主机触发）
+#
+# 安装：
+#   sudo cp /opt/work-agent/deploy/systemd/cert-renew.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cert-renew.timer
+#
+# 手动执行 / 演练：
+#   sudo systemctl start cert-renew.service
+#   bash /opt/work-agent/deploy/scripts/renew-cert.sh --dry-run
+#
+# 说明：不挂 docker socket —— 容器无常驻权限，续期由宿主机触发。
+# ==========================================
+[Unit]
+Description=Work Agent Let's Encrypt 证书续期（certbot 容器）+ reload 前端 Nginx 容器
+Documentation=file:/opt/work-agent/deploy/README.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/work-agent
+ExecStart=/bin/bash /opt/work-agent/deploy/scripts/renew-cert.sh
+# 续期是幂等的：证书未到期则 certbot 不动作，reload 也无副作用
+TimeoutStartSec=300

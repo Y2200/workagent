@@ -1,39 +1,70 @@
 #!/usr/bin/env bash
 # ==========================================
-# P6-1 回滚到 deploy/.last_deploy 记录的上一版本
-#   检出上一提交的代码 → 重建后端 → 重建前端 → reload nginx
-# 注意：会丢弃未提交的业务代码改动（先确认/备份）
+# P6-2 回滚：切换镜像版本（不重建、不 git）
+#
+#   bash deploy/scripts/rollback.sh              # 回上一版本（历史里最近的其它版本）
+#   bash deploy/scripts/rollback.sh <IMAGE_TAG>  # 回指定版本
+#
+# 说明：
+#   - 只切换 IMAGE_TAG 后 up -d，不在服务器构建，也不检出代码
+#   - **不回滚数据库**：迁移不向后执行；schema 需人工处理
+#   - 旧镜像若被 docker image prune -a 清掉，pull 会失败 ——
+#     生产机请勿执行全量 prune；Docker Hub 上的历史 tag 已保留
 # ==========================================
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-SUDO=""
-[ "$(id -u)" -ne 0 ] && SUDO="sudo"
+COMPOSE="docker compose -f deploy/docker-compose.prod.yml --env-file .env"
 
-test -f deploy/.last_deploy || { echo "✗ 无回滚记录（deploy/.last_deploy）"; exit 1; }
-TARGET="$(cat deploy/.last_deploy)"
-echo "回滚目标提交：$TARGET"
+TARGET="${1:-}"
+if [ -z "$TARGET" ]; then
+  test -f deploy/.deploy_history \
+    || { echo "✗ 无部署历史 deploy/.deploy_history，请显式指定：rollback.sh <IMAGE_TAG>"; exit 1; }
+  CUR="$(cat deploy/.last_deploy 2>/dev/null || true)"
+  TARGET="$(grep -v -x "$CUR" deploy/.deploy_history | tail -1)"
+  [ -n "$TARGET" ] \
+    || { echo "✗ 历史中找不到其它版本，请显式指定：rollback.sh <IMAGE_TAG>"; exit 1; }
+fi
 
-echo "===== 1. 检出上一版本代码（保留未跟踪的 deploy/ 与 .env）====="
-git stash push --include-untracked -m "rollback-before" 2>/dev/null || true
-git checkout "$TARGET" -- src frontend/src frontend/package.json frontend/vite.config.js 2>/dev/null \
-  || { echo "✗ 检出失败"; git stash pop 2>/dev/null || true; exit 1; }
-
-echo "===== 2. 重建前端 ====="
-cd frontend
-npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
-npm run build
-cd "$REPO_ROOT"
-# 注：构建产物即 nginx 根目录（仓库内 frontend/dist），无需拷贝
-
-echo "===== 3. 重建并重启后端 ====="
-docker compose -f deploy/docker-compose.prod.yml --env-file .env build backend
-docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
-
-echo "===== 4. Nginx reload ====="
-$SUDO nginx -t && $SUDO systemctl reload nginx
+echo "===== 回滚目标：$TARGET ====="
+export IMAGE_TAG="$TARGET"
 
 echo ""
-echo "回滚完成。如需回到新版本：bash deploy/scripts/deploy.sh"
+echo "===== 1. 拉取目标版本镜像 ====="
+$COMPOSE pull backend frontend
+
+echo ""
+echo "===== 2. 切换版本并重启 ====="
+$COMPOSE up -d
+
+echo ""
+echo "===== 3. 等待 backend 就绪 ====="
+for i in $(seq 1 30); do
+  if $COMPOSE exec -T backend curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    echo "✓ backend healthy（${i} 次尝试）"
+    break
+  fi
+  [ "$i" -eq 30 ] && { echo "✗ backend 未就绪，查 docker logs work-agent-backend"; exit 1; }
+  sleep 2
+done
+
+echo ""
+echo "===== 3.5 让 Nginx 重新解析后端地址 ====="
+# 回滚会重建 backend 容器（新 IP），Nginx 缓存的旧 IP 会导致 /api 502
+if $COMPOSE exec -T frontend nginx -s reload 2>/dev/null; then
+  echo "✓ Nginx 已 reload"
+else
+  echo "⚠  reload 未成功；若 /api 返回 502，手动执行："
+  echo "   docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T frontend nginx -s reload"
+fi
+
+echo ""
+echo "===== 4. 记录回滚 ====="
+echo "$TARGET" > deploy/.last_deploy
+echo "$TARGET" >> deploy/.deploy_history
+
+echo ""
+echo "✓ 已回滚到 $TARGET"
+echo "  注意：数据库未回滚（迁移不向后执行）"

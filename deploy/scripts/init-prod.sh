@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================
-# P6-1 生产首次初始化（仅在第一次部署后执行一次）
+# P6-2 生产首次初始化（仅在第一次部署后执行一次）
+#
+# 注：deploy.sh 每次部署已幂等执行 init_db + seed_admin，
+#     本脚本保留为显式的首次初始化入口。
 #
 # 允许执行（生产唯一初始化路径）：
 #   - init_db（建表，幂等）
@@ -18,6 +21,13 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 test -f .env || { echo "✗ 缺少 .env"; exit 1; }
+
+# compose 需要 IMAGE_TAG 做镜像插值：手动执行时从上次部署记录恢复
+if [ -z "${IMAGE_TAG:-}" ]; then
+  test -f deploy/.last_deploy || { echo "✗ 无 deploy/.last_deploy，请显式指定：IMAGE_TAG=<sha> bash deploy/scripts/init-prod.sh"; exit 1; }
+  export IMAGE_TAG="$(cat deploy/.last_deploy)"
+fi
+echo "✓ IMAGE_TAG=$IMAGE_TAG"
 
 COMPOSE="docker compose -f deploy/docker-compose.prod.yml --env-file .env"
 

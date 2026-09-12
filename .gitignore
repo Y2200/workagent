@@ -29,6 +29,8 @@ __pycache__/
 docs/project-plan.md
 docs/debug-record.md
 docs/phase-*.md
+# P6-2 改造需求书（本地过程文档，不入库）
+阅读.txt
 
 # ======================
 # 数据 / 日志 / 运行产物
@@ -50,7 +52,8 @@ docker/work-minio/
 frontend/node_modules/
 frontend/dist/
 npm-debug.log*
-package-lock.json
+# 注：package-lock.json 必须入库 —— CI 构建前端镜像时用 npm ci（依赖 lockfile），
+#     且生产镜像需要可复现安装（P6-2 改造）
 
 # ======================
 # 其他
@@ -58,4 +61,6 @@ package-lock.json
 .claude/
 *.tmp
 .DS_Store
+# 部署运行态记录（服务器本地生成，不入库）
 deploy/.last_deploy
+deploy/.deploy_history

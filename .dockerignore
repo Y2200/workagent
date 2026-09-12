@@ -1,6 +1,10 @@
 # ==========================================
 # Docker 构建上下文排除
-# 镜像不得包含任何秘密 / 数据 / 测试内容 / 文档
+#
+# 本项目两个镜像都用仓库根作为构建上下文：
+#   backend  : Dockerfile          （只需 src/ + requirements.prod.txt）
+#   frontend : Dockerfile.frontend （需 frontend/ 源码 + deploy/nginx/ 配置）
+# 因此这里按"两者都不需要"来排除；镜像内不得包含任何秘密 / 数据 / 测试内容
 # ==========================================
 
 # 敏感配置（绝对禁止进入镜像）
@@ -33,21 +37,27 @@ data/
 logs/
 knowledge/
 reports/
+ci-reports/
 docker/
 *.log
 
-# 前端（不进后端镜像）
-frontend/
-node_modules/
+# 前端：源码与 deploy/nginx 配置需进构建上下文，依赖与产物不进
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
 
-# 部署与文档（宿主机侧）
-deploy/
+# 部署运行态文件（宿主机侧，绝不进镜像）
+deploy/.last_deploy
+deploy/.deploy_history
+
+# Dockerfile 本身与部署文档（由 -f 单独读取）
 Dockerfile
+Dockerfile.frontend
 .dockerignore
-
-# 项目文档 / 环境
 *.md
 docs/
+
+# 其他环境文件
 requirements.txt
 pyproject.toml
 uv.lock

@@ -6,11 +6,48 @@
 
 ---
 
-# ⚡ 当前状态（2026-08-21，GitHub Actions CI/CD 全自动上线 ✅）
+# ⚡ 当前状态（2026-09-12，CI/CD 改为容器化模式 P6-2）
 
-**代码状态**：本地 `master` = `6ce7787`（审计可见性修复 `5cfa4fd` + CI 校验 `6ce7787`）。生产已上线：阿里云香港 `https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
+**代码状态**：本地 `master` = `70261a8`（P6-2 改造在工作区，尚未提交）。生产已上线：`https://wkcp.online`（前端）、`https://api.wkcp.online`（API）。
 
-**✅ CI/CD 流水线已全自动跑通**：45/45 测试全绿 + SSH 部署 job 成功（deploy.sh master：git pull → docker build → 幂等迁移 → 前端 → nginx → healthcheck）。之后每次 push master 即自动测试+上线。
+**✅ CI/CD 已改为容器化模式（P6-2）**：push master → `test` → `build`（构建并推送前后端镜像到 Docker Hub，tag = commit SHA）→ `deploy`（scp `deploy/` 制品 → SSH `docker compose pull` + `up -d` → 幂等迁移 → 健康检查）。服务器**不再 git pull / npm build / docker build**，宿主机**不再装 Nginx / Certbot**。
+
+## 最新（2026-09-12）：P6-2 CI/CD 容器化改造（方案B：Nginx 也容器化）
+
+- **需求来源**：仓库根 `阅读.txt`（目标：CI 构建 → Docker Hub → CD 只拉镜像；ECS 只负责运行容器与持久化）
+- **目标架构**：`frontend` 容器 = Nginx + Vue dist **融合镜像**，唯一发布 80/443（TLS 终止 + 静态托管 + `/api` 反代）；
+  backend 与 DB/Milvus/MinIO/Redis **零端口发布**，容器间经 internal 网络用服务名互访（`backend:8000`）
+- **镜像**：
+  - `Dockerfile.frontend`（新）：`node:20-alpine` → `npm ci` + `vite build` → `nginx:alpine` + dist + `deploy/nginx/`
+    配置（**配置即代码**，随镜像发布；改 Nginx 配置 = 走一次发版，服务器上不再 cp 配置）
+  - `Dockerfile`（后端）：**未改动**
+  - `.dockerignore` 改为同时服务两个镜像：移除 `frontend/`、`deploy/` 的整体排除，改为精确排除
+    `frontend/node_modules/`、`frontend/dist/`（保留 `deploy/nginx/` 供镜像 COPY）
+- **Nginx 配置迁移**：`deploy/nginx/{wkcp.online,api.wkcp.online}.conf` → `deploy/nginx/conf.d/`，新增主配置
+  `deploy/nginx/nginx.conf`（日志走 stdout/stderr、`server_tokens off`、**新增 `client_max_body_size 50m` 修掉大文件 413 隐患**、
+  两个 :80 server 块加 `location = /healthz` 供容器 healthcheck）；反代目标 `127.0.0.1:8000` → `backend:8000`
+- **证书（方案B 关键改动）**：certbot 容器化（`certbot/certbot`，`profiles: ["certbot"]` 按需 run、不常驻）；
+  证书持久化在宿主机 `/opt/work-agent/certbot/{conf,www}`，**整目录**只读挂进 frontend 容器的 `/etc/letsencrypt`
+  （`live/*` 是指向 `archive/` 的符号链接，只挂 `live/` 会断链 → nginx 起不来）；
+  续期由**宿主机 systemd timer** 触发（`deploy/systemd/cert-renew.{service,timer}` → `deploy/scripts/renew-cert.sh`），
+  **不挂 docker socket**；renewal conf 需改 `authenticator: nginx → webroot` 并删除 `installer = nginx`
+- **脚本去 Git 化**：`deploy.sh` 改为 `preflight → 校验 IMAGE_TAG → pull 应用镜像 → up -d → 等就绪 → 9 个幂等迁移
+  → 写版本 → 健康检查`（健康检查改容器内 `exec`，因 backend 不再发布端口）；`rollback.sh` 改为 IMAGE_TAG 切换
+  （`.last_deploy` + `.deploy_history`）；`preflight.sh` 新增「宿主机 nginx 必须已停用」「证书目录就绪」两项硬校验；
+  `init-server.sh` 不再安装 nginx/certbot；新增 `renew-cert.sh`
+- **CI**：`ci.yml` 3 job（`test` / `build` / `deploy`）；build 用 `docker/login-action@v3` + `docker/build-push-action@v6`
+  + GHA 层缓存；deploy 先用 `scp-action` 推 `deploy/` 再 SSH 执行；`needs: [test, build]` 保证测试/构建失败不碰生产；
+  部署超时 30m → 10m
+- **前置修复**：`frontend/package-lock.json` 此前被 `.gitignore` 排除（镜像里 `npm ci` 会直接失败）→ 移出并入库；
+  新增 `.gitattributes`（`*.sh eol=lf`）避免 CRLF 脚本在 Linux 上报 `bad interpreter`；
+  修 `.gitignore` 拼写错误 `docs/project-plan.md0`（多一个 `0`，导致该文档实际未被忽略）
+- **生产 compose**：`backend.build:` → `image: ${DOCKERHUB_USER}/workagent-backend:${IMAGE_TAG}`（去掉端口发布）；
+  新增 `frontend`（80/443 + 证书卷）与 `certbot`（profile）；**6 个基础设施服务定义一行未动**
+- **验证（本机）**：`docker compose config` 通过（插值 + 端口 + 证书卷解析正确）；全部 `deploy/scripts/*.sh` 通过 `bash -n`；
+  `ci.yml` YAML 解析通过（3 job / needs 链正确）；`.gitattributes` 实测使入库 blob 为 LF
+- **待办**：服务器侧一次性切换**未执行**（本环境不连接服务器，runbook 见 `deploy/README.md` 第一章）；
+  Docker Hub 两个仓库待创建、`DOCKER_USERNAME`/`DOCKER_PAT` Secrets 待配置；
+  `frontend/package-lock.json` 待提交入库
 
 ## 最新（2026-08-31）：企微语音识别（阿里云 ASR 一句话识别）
 - **能力**：员工在企微发语音 → 阿里云 NLS 一句话识别 → 文本 → 走现有 Agent 问答链路

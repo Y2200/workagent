@@ -1,0 +1,22 @@
+# ==========================================
+# P6-2 每日检查证书续期（certbot 只在到期前 30 天内才真正续期）
+#
+# 安装：
+#   sudo cp /opt/work-agent/deploy/systemd/cert-renew.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cert-renew.timer
+# 查看：
+#   systemctl list-timers cert-renew.timer
+# ==========================================
+[Unit]
+Description=每日检查 Work Agent 证书续期
+
+[Timer]
+# 低峰时段 + 随机延迟，避免与其它任务/ACME 请求撞车
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=30m
+# 关机/停机错过的任务在下次启动后补跑
+Persistent=true
+
+[Install]
+WantedBy=timers.target

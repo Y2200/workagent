@@ -24,12 +24,13 @@
 - **P5-5-7 Production Test Suite**：一键汇总 6 个 P5-5 子套件 + 契约断言（Agent 不直连 DB/API 分层/Prompt 外置）→ `reports/production_suite_report.json`
 - **Phase 5 Enterprise Agent Platform 全部完成** ✅
 - **P6-1 Production Deployment 已完成**：`deploy/` 生产部署体系（compose/nginx/scripts/README）、Dockerfile、requirements.prod.txt、.env.example、CORS 配置化、`milvus_uri` 配置
-- **部署（服务器侧）**：按 `deploy/README.md` 在腾讯云执行；**阻塞项：milvus_store.py 连 Milvus 地址接线待批准**
-- **下一步**：milvus_store 接线批准、前端接入治理看板、企业微信正式接入、Celery（见 PROJECT_CONTEXT.md）
+- **P6-2 CI/CD 容器化改造（方案B）已完成（代码侧）**：CI 构建前后端镜像推 Docker Hub（tag=commit SHA）→ CD 只 `pull` + `up -d`，服务器不构建、不留 Git 工作区（scp 推 `deploy/` 制品）；`Dockerfile.frontend` = Nginx + dist 融合镜像（唯一入口 80/443，TLS + `/api` 反代 `backend:8000`）；`deploy/nginx/conf.d/` 配置进镜像；certbot 容器化 + 宿主机 systemd timer 续期；后端与 6 个基础设施服务定义未动
+- **部署（服务器侧）**：服务器**一次性切换未执行**（本环境不连接服务器），runbook 见 `deploy/README.md` 第一章。原「milvus_store 接线待批准」阻塞项**已解除**：`config.py` 的 `milvus_uri` 读 `MILVUS_URI` 环境变量，`rag/milvus_store.py:16` 已使用
+- **下一步**：服务器切换 + 配 Docker Hub Secrets（`DOCKER_USERNAME`/`DOCKER_PAT`）、`frontend/package-lock.json` 提交入库、前端接入治理看板、企业微信正式接入、Celery（见 PROJECT_CONTEXT.md）
 - **任务督导 Phase 3 自动督办已完成**：APScheduler 每日扫描未完成任务 → 确定性风险判断（逾期/剩余天数+进度/优先级 → high/medium/low）→ 企微提醒员工（`scheduler/task_scheduler.py` + `services/task_reminder_service.py`；`TASK_REMINDER_ENABLED/TIME/MIN_RISK` 配置；测试 `test_task_reminder.py` 7 部分）
 - **用户管理增强（A/B/C）已完成**：Web 新建/编辑用户（`POST`/`PUT /api/admin/users`，user:manage + 多租户角色校验）+ `real_name` 显示名字段（可重复，username 仍唯一）+ 企微绑定并发加固（`users.wechat_user_id` 部分唯一索引 + `_auto_create_user` find-or-create）；迁移 `scripts/migrate_user_profile.py`（幂等）；测试 `test_user_management.py` 8 部分
 - **任务统计/周报/邮件（Phase 4）已完成**：`/api/admin/task/stats`（总览/部门/员工/风险）+ Excel/Word 导出（openpyxl+python-docx）+ 汇总周报（Word 下载 + APScheduler 每周邮件）+ 任务完成邮件（SMTP 默认关 `EMAIL_ENABLED`，`User.email` 字段）；前端 TaskStats 统计页；测试 `test_task_stats.py` 6 部分
-- **测试状态**：28/28 全绿（`python -m work_agent.scripts.test_<name>`，见 PROJECT_CONTEXT.md）
+- **测试状态**：入口 `python -m work_agent.scripts.run_all_tests`（自动发现 `src/work_agent/scripts/test_*.py`，当前 50 个，`DEFAULT_SKIP` 为空；CI 以它作门禁，报告 `ci-reports/ci_test_results.json`）—— 旧文档里的 "28/28" / "45/45" 均为过期数字
 - **评测**：Agent 评测 50/50 全绿，报告在 `reports/agent_eval_report.json`
 
 ## 架构铁律（不可违反）
@@ -46,7 +47,8 @@
 
 - 后端：`python -m uvicorn work_agent.main:app --host 127.0.0.1 --port 8000`
 - 前端：`cd frontend && npm run dev`（:5173，/api 代理到 :8000）
-- 依赖容器：`docker compose up -d`（PostgreSQL/MinIO/Milvus）
+- 依赖容器：`docker compose up -d`（根目录 compose，**只起依赖**：PostgreSQL / Milvus(+etcd+minio) / MinIO；后端裸跑在 .venv）
+- 生产 compose：`deploy/docker-compose.prod.yml`（全栈容器化，镜像来自 Docker Hub；见 `deploy/README.md`）
 - 数据库建表/迁移/种子：见 PROJECT_CONTEXT.md 常用命令
 - 环境：Windows，Python 3.11（.venv），uv 管理
 

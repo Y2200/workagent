@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+# ==========================================
+# P6-2 生产镜像：work-agent frontend（Nginx + Vue dist 融合镜像）
+#
+# 构建上下文 = 仓库根（需同时取 frontend/ 源码与 deploy/nginx/ 配置）
+#   CI/CD:  context: .   file: Dockerfile.frontend
+#
+# 双阶段：
+#   node:20-alpine → npm ci → vite build → dist
+#   nginx:alpine   → dist + nginx.conf + conf.d → 直接监听 80/443
+#
+# 设计要点：
+#   - Nginx 配置即代码：随 Git 管理、随镜像发布，服务器上不再 cp 配置
+#   - 前端无构建期环境变量（src/api/index.js 用相对路径 /api），镜像环境无关
+#   - 构建期**禁止**执行 nginx -t：证书目录由宿主机卷在运行时挂入
+#   - 安全：.env / 密钥 / 数据 / 日志绝不 COPY 进镜像（见 .dockerignore）
+# ==========================================
+
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# 依赖层单独缓存（package-lock.json 已入库，npm ci 可复现）
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# 源码 + 构建
+COPY frontend/ ./
+RUN npm run build
+
+# ==========================================
+
+FROM nginx:alpine
+
+# 主配置 + 站点配置
+COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/nginx/conf.d/ /etc/nginx/conf.d/
+
+# 前端产物
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# 运行时由 compose 挂载宿主机卷：
+#   /etc/letsencrypt  ← /opt/work-agent/certbot/conf （只读；含 live/ 符号链接，需整目录挂载）
+#   /var/www/certbot  ← /opt/work-agent/certbot/www  （ACME webroot 校验目录）
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

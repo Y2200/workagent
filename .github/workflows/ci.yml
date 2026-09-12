@@ -1,14 +1,19 @@
-# Work Agent CI/CD 流水线（方案A：服务器本地构建，无镜像仓库）
+# Work Agent CI/CD 流水线（P6-2：CI 构建镜像 → Docker Hub → CD 只拉镜像）
 #
-# 触发：任意分支 push / PR → 只跑 test（门禁）；master push → test → deploy
-# 部署：GitHub Actions SSH 登录服务器 → 执行 deploy/scripts/deploy.sh master
-#      （服务器 git pull → docker build backend → up -d → 幂等迁移 → 前端 → nginx）
+# 触发：任意分支 push / PR → 只跑 test（门禁）
+#      master push → test → build（构建并推送前后端镜像）→ deploy（scp 制品 + SSH 拉镜像重启）
+#
+# 生产服务器不再有 Git 工作区，也不再 npm build / docker build：
+#   deploy 先 scp deploy/ 制品（compose + nginx 配置 + 脚本）→ 再 SSH 执行 deploy/scripts/deploy.sh
+#   deploy.sh 只做：docker compose pull → up -d → 幂等迁移 → 健康检查
 #
 # 需要的仓库 Secrets（Settings → Secrets and variables → Actions）：
 #   DEPLOY_HOST      服务器 IP/域名
 #   DEPLOY_USER      服务器 SSH 用户，如 ubuntu
 #   DEPLOY_SSH_KEY   部署用 SSH 私钥（公钥已加入服务器 authorized_keys）
 #   LLM_API_KEY      DeepSeek API key（CI 测试真实 LLM 用例用）
+#   DOCKER_USERNAME  Docker Hub 用户名（同一值也需写入服务器 .env 的 DOCKERHUB_USER）
+#   DOCKER_PAT       Docker Hub Personal Access Token（勿用账号密码；勿写入仓库任何文件）
 
 name: CI/CD
 
@@ -110,24 +115,94 @@ jobs:
           name: ci-test-reports
           path: ci-reports/
 
-  deploy:
-    name: SSH 部署到腾讯云服务器
+  build:
+    name: 构建并推送镜像（Docker Hub）
+    # 仅 master push：PR 不推生产镜像（也拿不到 Secrets）
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - name: SSH 登录服务器执行部署（git pull → build → up → 迁移 → 前端 → nginx）
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
+
+      - name: 校验 Docker Hub 凭据
+        run: |
+          if [ -z "${{ secrets.DOCKER_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_PAT }}" ]; then
+            echo "❌ 缺少 DOCKER_USERNAME / DOCKER_PAT Secret"
+            echo "   请到 Settings → Secrets and variables → Actions 添加（PAT，勿用账号密码）"
+            exit 1
+          fi
+          echo "✓ Docker Hub 凭据已配置"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PAT }}
+
+      # 镜像 tag = commit 全 SHA：生产按 SHA 固定版本部署（latest 仅作便利标签）
+      - name: 构建并推送 frontend 镜像（Nginx + dist）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/workagent-frontend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/workagent-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: 构建并推送 backend 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/workagent-backend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/workagent-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  deploy:
+    name: 部署到生产服务器（拉镜像 + 重启）
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # test 或 build 失败都不会进入部署（测试失败不得触碰生产）
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 推送部署制品（compose / nginx 配置 / 脚本）
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          # 服务器冷构建（apt ffmpeg + pip 全量 ML 依赖）可超 10 分钟；
-          # appleboy/ssh-action 命令默认超时 10m，需放宽否则在 docker build 中被掐断
-          # （2026-09-02 d898768 CD 失败即为此：Run Command Timeout）
-          command_timeout: 30m
+          # 只推 deploy/ 制品；.env 不在仓库中（gitignore）且证书在
+          # /opt/work-agent/certbot/，两者都不会被覆盖
+          source: "deploy"
+          target: "/opt/work-agent"
+          overwrite: true
+
+      - name: SSH 执行部署（pull → up → 迁移 → 健康检查）
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          DOCKERHUB_USER: ${{ secrets.DOCKER_USERNAME }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          envs: IMAGE_TAG,DOCKERHUB_USER
+          # 镜像已在 CI 构建推送，服务器只拉取与重启，10m 足够
+          # （旧方案服务器冷构建需 30m，见 70261a8）
+          command_timeout: 10m
           script: |
             set -e
             cd /opt/work-agent || exit 1
-            bash deploy/scripts/deploy.sh master
+            bash deploy/scripts/deploy.sh

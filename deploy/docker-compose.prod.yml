@@ -1,17 +1,32 @@
 # ==========================================
-# P6-1 生产编排（腾讯云 Ubuntu / 阿里云香港 ECS 2C4G 均适用）
+# P6-2 生产编排（腾讯云 Ubuntu / 阿里云 ECS 2C4G 均适用）
+#
+# 模式：镜像来自 Docker Hub，**服务器不构建、不 git pull**
+#   CI: 测试通过 → 构建前后端镜像（tag = commit SHA）→ push Docker Hub
+#   CD: scp 部署制品 → docker compose pull → up -d → 幂等迁移 → 健康检查
+#
+# Web 入口 = frontend 容器（Nginx + Vue dist 融合镜像），直接监听 80/443：
+#   Internet → frontend(443, TLS) → /     静态 dist
+#                                → /api  backend:8000
+#                                →      api.wkcp.online 全量反代 backend
+#   宿主机不再安装 Nginx/Certbot（方案B：整个 Web 入口容器化）
 #
 # 4G 小内存适配：各容器 mem_limit 上限 + Milvus cache/GOMEMLIMIT 收缩 + PG 调参 + torch 单线程
 #
 # 安全要点：
-#   - 全部服务在独立 internal 网络；仅 backend 经 127.0.0.1:8000 发布给宿主机 Nginx
-#   - 数据库/Milvus/MinIO/Redis/etcd 一律不发布任何端口（公网不可达）
+#   - 全部服务在独立 internal 网络；仅 frontend 发布 80/443
+#   - backend 与数据库/Milvus/MinIO/Redis/etcd 一律不发布端口（容器间经服务名互访）
 #   - 生产密码一律强制注入（${VAR:?}），无默认弱值
 #   - 全部数据卷持久化（docker compose up 重跑不丢数据）
 #   - 日志 json-file 轮转（max-size 20m / max-file 5）
 #
 # 运行（从仓库根执行，.env 位于仓库根）：
-#   docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+#   IMAGE_TAG=<commit-sha> docker compose -f deploy/docker-compose.prod.yml --env-file .env pull backend frontend
+#   IMAGE_TAG=<commit-sha> docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
+#
+# 手动运维命令前请先注入版本（否则 IMAGE_TAG 未设置会报错）：
+#   export IMAGE_TAG=$(cat deploy/.last_deploy)
+# 日常部署请统一走 deploy/scripts/deploy.sh（它会校验并注入）
 # ==========================================
 
 name: work-agent-prod
@@ -187,12 +202,11 @@ services:
       retries: 10
 
   # ======================
-  # FastAPI backend（单 worker；仅回环发布给宿主 Nginx）
+  # FastAPI backend（单 worker；不发布端口，由 frontend 容器经 internal 网络反代 backend:8000）
   # ======================
   backend:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    # P6-2：镜像由 CI 构建推送，服务器只拉取（不再本地 build）
+    image: ${DOCKERHUB_USER:?请在 .env 设置 DOCKERHUB_USER}/workagent-backend:${IMAGE_TAG:?部署前需注入 IMAGE_TAG（commit SHA）}
     container_name: work-agent-backend
     restart: unless-stopped
     networks: [internal]
@@ -203,9 +217,7 @@ services:
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
     env_file: ../.env
-    ports:
-      # 仅宿主机回环可达（Nginx 代理）；公网不可直连
-      - "127.0.0.1:8000:8000"
+    # P6-2：不再向宿主机发布端口 —— 前端容器经 internal 网络用 backend:8000 反代
     volumes:
       - hf-cache:/app/.cache/huggingface
     depends_on:
@@ -221,3 +233,55 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+
+  # ======================
+  # Web 入口：frontend 容器（Nginx + Vue dist 融合镜像）
+  #   - 唯一对外发布端口的服务（80/443）
+  #   - TLS 终止 + 前端静态托管 + /api 反代 backend 容器
+  #   - Nginx 配置打在镜像里（deploy/nginx/），随 Git/CI 发布
+  # ======================
+  frontend:
+    image: ${DOCKERHUB_USER:?请在 .env 设置 DOCKERHUB_USER}/workagent-frontend:${IMAGE_TAG:?部署前需注入 IMAGE_TAG（commit SHA）}
+    container_name: work-agent-frontend
+    restart: unless-stopped
+    networks: [internal]
+    logging: *default-logging
+    mem_limit: 128m
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 必须挂载整个 /etc/letsencrypt 目录：live/ 下是指向 archive/ 的符号链接，
+      # 只挂 live/ 会断链导致 nginx 启动失败
+      - /opt/work-agent/certbot/conf:/etc/letsencrypt:ro
+      # ACME webroot 校验目录（与 certbot 容器共享，本容器只读）
+      - /opt/work-agent/certbot/www:/var/www/certbot:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # nginx:alpine 无 curl，用 busybox wget；打 :80 的 /healthz（未匹配 Host 时由默认 server 应答）
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ======================
+  # certbot（按需运行，不常驻）
+  #   日常由宿主机 systemd timer 调用 deploy/scripts/renew-cert.sh；
+  #   手动示例：docker compose ... --profile certbot run --rm certbot certificates
+  #   注意：证书与 ACME 目录持久化在宿主机 /opt/work-agent/certbot/，
+  #        容器重建不会丢证书（避免重复签发撞 Let's Encrypt 每周限流）
+  # ======================
+  certbot:
+    image: certbot/certbot
+    container_name: work-agent-certbot
+    profiles: ["certbot"]
+    networks: [internal]
+    logging: *default-logging
+    mem_limit: 128m
+    volumes:
+      - /opt/work-agent/certbot/conf:/etc/letsencrypt
+      - /opt/work-agent/certbot/www:/var/www/certbot
+    entrypoint: ["certbot"]
